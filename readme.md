@@ -2,11 +2,18 @@
 
 _This is the detailed tutorial, so follow it carefully and if something goes wrong check this tutorial again._
 
+## Prequisites
+* Python 3.10, download it from [Here](https://www.python.org/downloads/) and make sure to add it to your path.
+
+Or by using winget:
+```powershell
+winget install --id Python.Python.3.10
+```
+> How to use winget? *Open a PowerShell console and paste that command.*
+
 ## Installation
 
-First, You need to have [Python](https://www.python.org) Installed, Download it from [Here](https://www.python.org/downloads/) and select `add python to PATH`
-
-Downlaod .Zip file from GitHub, or from [Here](https://github.com/RyukASF/Pixeler/archive/refs/heads/main.zip)
+Downlaod .Zip file from GitHub, or from [Here](https://github.com/Gann4Life/Pixeler/archive/refs/heads/main.zip)
 and extract it.
 
 ![image](https://github.com/user-attachments/assets/dfa8a6cc-aacb-4654-bb25-e0814613261d)
@@ -14,18 +21,18 @@ and extract it.
 Or if you already have [Git](https://git-scm.com/downloads) installed, use this command in terminal:
 
 ```bash
-git clone https://github.com/RyukASF/Pixeler
+git clone https://github.com/Gann4Life/Pixeler
 ```
 
+> Don't have git? Install it with winget `winget install --id Git.Git` :3
+
 ## Setup
+Run `start.bat` to start the program, it will set up a virtual environmennt located at `.\.venv` and install required packages in it, this will happen only once.
+Once it finishes, the program will start.
 
-Inside the Pixeler Folder, run `pixelCounter.bat`
+### Calibration
 
-by using this program we will get the information about coordinates ingame and install necessary libraries_
-
-When you run the program, first it is going to start installing libraries.
-
-after it finishes you will see This:
+When you go into calibration mode, you will see this:
 
 ![image2](https://github.com/user-attachments/assets/ed3d4082-b066-4a11-8ac2-a41446e1d77e)
 
@@ -58,40 +65,13 @@ By pressing `U` Key, add Close Button to the list.
 
 ![imag2e](https://github.com/user-attachments/assets/da16f7f1-3e3b-4bb9-8f13-6490fc837bc0)
 
-Now when you're done, check the `pixelCounter` program. You should see something like This:
+Now when you're done, press `G` to save changes into config.json. You should see something like This:
 
 ![imag4e](https://github.com/user-attachments/assets/51a62b1c-bdd0-4d77-bbb8-b99dad6f3087)
 
-_DO NOT CLOSE THE PROGRAM YET_
+Once you left calibration mode and changes were saved, move to the second option `Begin Drawing`.
 
-Next, inside Pixeler Folder, go in python Folder and open `pixeler.py` by using **Any Text Editor** (I recommend using [Visual Stuido Code](https://code.visualstudio.com))
-
-![Screenshot_3](https://github.com/user-attachments/assets/adc8ce53-b3c3-45ac-84ac-3fd6406666d9)
-
-Inside the Code Look for This Code:
-
-```python
-# ----------------------------------------------------------------------------------------------------------------------
-
-# Set Button coordinates //CHANGE THIS COORDINATES WITH YOUR COORDINATES (By using PixelCounter.py)
-colorCord = 1093, 863  # Colour Select Button
-inputCord = 1087, 761  # Input Text Area
-closeCord = 1345, 471  # Close Button
-
-# Set x and y coordinates //CHANGE THIS COORDINATES WITH YOUR COORDINATES (By using PixelCounter.py)
-x = [646, 663, 686, 704, 723, 748, 765, 788, 804, 829, 845, 868, 889, 908, 931, 951, 969,
-     985, 1012, 1031, 1051, 1074, 1091, 1113, 1134, 1154, 1173, 1193, 1214, 1235, 1255, 1273]
-y = [165, 186, 204, 225, 245, 263, 282, 305, 327, 344, 364, 385, 405, 428, 444, 470,
-     489, 509, 529, 552, 572, 586, 607, 632, 648, 669, 688, 710, 732, 755, 769, 793]
-
-# ----------------------------------------------------------------------------------------------------------------------
-```
-
-**Replace the Values in Code with Your Values from pixelCounter Program And Save The Code** 
-
-## Use
-
-inside Pixeler Folder, run `pixeler.bat` file
+### Draw Mode
 
 ![ima5ge](https://github.com/user-attachments/assets/f3ad7c57-15e9-4845-a4e0-d7ef9a74e4bc)
 
@@ -105,6 +85,8 @@ Press `H` to Select Image you want to draw
 
 Press `F` to Start Drawing
 
-Press `G` to Stop the Program
+Press `G` to Stop Drawing.
+
+For now, whenever you go into draw mode you will always have to load a new image so please use carefully.
 
 ## Enjoy!
