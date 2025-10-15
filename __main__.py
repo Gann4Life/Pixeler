@@ -11,6 +11,8 @@ class PixelerApp:
     def __init__(self):
         self.pixelIndex = 0
         
+        self.paused = False
+
         self.image_pixels = PixelExtractor()
 
         self.settings = ScreenCalibration()
@@ -51,6 +53,7 @@ class PixelerApp:
         while True:
             if keyboard.is_pressed('f') and len(self.image_pixels.get_pixels()) > 0:
                 self.draw_loop()
+                self.main_menu()
             elif keyboard.is_pressed('g'):
                 self.stop()
                 break  # Exit loop and go back to menu
@@ -58,7 +61,20 @@ class PixelerApp:
 
     def draw_loop(self):
         print("Drawing started...")
-        print(self.settings.y)
+
+        def check_for_inputs():
+            # Check for stop key during drawing
+            if keyboard.is_pressed('g'):
+                print("Stopping...")
+                return
+            # Pause and unpause
+            if keyboard.is_pressed('f'):
+                print("Paused, press F to resume.")
+                self.paused = True
+                while self.paused:
+                    time.sleep(0.1)
+                    if keyboard.is_pressed('f'):
+                        self.paused = False
 
         palette = set(self.image_pixels.get_pixels())
         for c in palette:
@@ -73,10 +89,7 @@ class PixelerApp:
                     self.pencil.draw_at(self.settings.x[x], self.settings.y[y])
                     self.pixelIndex += 1
 
-                    # Check for stop key during drawing
-                    if keyboard.is_pressed('g'):
-                        print("Stopping...")
-                        return
+                    check_for_inputs()
 
         print("Drawing complete!")
         playsound("audio/ding.mp3")
@@ -84,6 +97,7 @@ class PixelerApp:
     def stop(self):
         print("\nStopping... Returning to main menu.")
         self.pixelIndex = 0  # Reset progress
+        self.paused = False
         keyboard.unhook_all()  # Clean up all keyboard listeners
         self.main_menu()
         
