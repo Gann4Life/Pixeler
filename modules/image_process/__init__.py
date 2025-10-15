@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog
-from PIL import Image, ImageFile, ImageGrab
+from PIL import Image, ImageFile, ImageGrab, UnidentifiedImageError
 
 class PixelExtractor:
     '''Extracts pixel data from an image.'''
@@ -30,10 +30,17 @@ class PixelExtractor:
         root.withdraw()
         if file_path == None:
             file_path = filedialog.askopenfilename()
-        self.image = Image.open(file_path)
-        self.try_convert_to_rgba()
-        self.crop_resize()
-        print(f"Loaded image: {file_path} ({self.image.width}x{self.image.height})")
+
+        try:
+            self.image = Image.open(file_path)
+            self.try_convert_to_rgba()
+            self.crop_resize()
+            print(f"Loaded image: {file_path} ({self.image.width}x{self.image.height})")
+        except UnidentifiedImageError as e:
+            print("__ ERROR __")
+            print("Unsupported file extension.")
+            print(f'"{e}"')
+            print("_"*8)
 
     def load_image_clipboard(self):
         '''Loads an image from the clipboard.'''
@@ -52,7 +59,7 @@ class PixelExtractor:
         except TypeError as type_error:
             print("__ ERROR __")
             print("Please copy an image to your clipboard.")
-            print(type_error)
+            print(f'"{type_error}"')
             print("_"*8)
         except Exception as e:
             raise e
