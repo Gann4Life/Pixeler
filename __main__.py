@@ -1,24 +1,25 @@
 # TODO: Possibility to load image from clipboard.
 
-from modules.calibration import ScreenCalibration
-from modules.input_control import ColorPicker, PencilTool
-import keyboard, time
-import tkinter as tk
-from tkinter import filedialog
-from PIL import Image
-from playsound import playsound
+import keyboard
 import questionary
+import time
+from playsound import playsound
+
+from modules.calibration import ScreenCalibration
+from modules.image_process import PixelExtractor
+from modules.input_control import ColorPicker, PencilTool
 
 class PixelerApp:
     def __init__(self):
-        self.pIndex = 0
-        self.pixels = []
+        self.pixelIndex = 0
         self.should_stop = False
+        
+        self.image_pixels = PixelExtractor()
 
         self.settings = ScreenCalibration()
         self.settings.load_config()
-        color_picker = ColorPicker(self.settings)
-        self.pencil = PencilTool(self.settings, color_picker)
+        self.color_picker = ColorPicker(self.settings)
+        self.pencil = PencilTool(self.settings, self.color_picker)
 
         self.main_menu()
 
@@ -26,13 +27,17 @@ class PixelerApp:
         options = {
             "Calibrate Screen": self.calibrate,
             "Begin Drawing": self.begin_drawing,
+            "Load Image from File": self.image_pixels.load_image_file,
+            "Load Image from Clipboard": self.image_pixels.load_image_clipboard,
+            "Exit": exit
         }
 
         choice = questionary.rawselect("Select an option:", choices=options.keys()).ask()
         options[choice]()
+        self.main_menu()
 
     def calibrate(self):
-        self.settings.run(on_finish=self.main_menu)
+        self.settings.run()
 
     def begin_drawing(self):
         # Warn user if coordinates are not set properly
@@ -42,8 +47,6 @@ class PixelerApp:
             self.main_menu()
             return
 
-        # TODO: Add option to load image from the menu, so we can redraw whenever we want without choosing the file every time we stop.
-        print("Press H To Select Image")
         print("Press F To Start Drawing")
         print("Press G To Stop and Return to Menu")
         
@@ -51,79 +54,48 @@ class PixelerApp:
         
         # Manual loop instead of keyboard.wait()
         while True:
-            if keyboard.is_pressed('h'):
-                self.process_image()
-                time.sleep(0.3)  # Debounce to prevent multiple triggers
-            elif keyboard.is_pressed('f') and len(self.pixels) > 0:
+            if keyboard.is_pressed('f') and len(self.image_pixels.get_pixels()) > 0:
                 self.draw_loop()
             elif keyboard.is_pressed('g'):
                 self.stop()
                 break  # Exit loop and go back to menu
             time.sleep(0.05)  # Small delay to prevent CPU spinning
 
-    def process_image(self):
-        self.pixels.clear()
-
-        # Create a file dialog
-        root = tk.Tk()
-        root.withdraw()
-        file_path = filedialog.askopenfilename()
-        
-        if not file_path:  # User cancelled
-            print("No image selected.")
-            return
-
-        img = Image.open(file_path)
-
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
-
-        img = img.resize((32, 32))
-
-        for y in range(img.height):
-            for x in range(img.width):
-                r, g, b, a = img.getpixel((x, y))
-                color = "#{:02x}{:02x}{:02x}".format(r, g, b)
-                self.pixels.append(color)
-        
-        self.pIndex = 0
-        self.should_stop = False
-
-        print(f"Opened image: {file_path}")
-        print("Image loaded! Press F to start drawing.")
-
-    # TODO: Change algorithm to draw all positions of each color in sequence.
     def draw_loop(self):
         print("Drawing started...")
-        
-        for cy in range(len(self.settings.y)):
-            if self.should_stop:
-                break
-                
-            for cx in range(len(self.settings.x)):
+        print(self.settings.y)
+
+        palette = set(self.image_pixels.get_pixels())
+        for c in palette:
+            self.color_picker.pick(c)
+            self.pixelIndex = 0
+            for y in range(len(self.settings.y)):
                 if self.should_stop:
                     break
-                
-                # Check if we're done
-                if self.pIndex >= 1024:
-                    playsound("audio/ding.mp3")
-                    print("Drawing complete!")
-                    return
 
-                self.pencil.draw_color_at(self.pixels[self.pIndex], self.settings.x[cx], self.settings.y[cy])
-                self.pIndex += 1
-                
-                # Check for stop key during drawing
-                if keyboard.is_pressed('g'):
-                    print("Stopping...")
-                    self.should_stop = True
-                    break
+                for x in range(len(self.settings.x)):
+                    if self.should_stop:
+                        break
+
+                    current_color = self.image_pixels.get_color_at(x, y)
+                    if current_color != c: continue
+
+                    self.pencil.draw_at(self.settings.x[x], self.settings.y[y])
+                    self.pixelIndex += 1
+
+                    # Check for stop key during drawing
+                    if keyboard.is_pressed('g'):
+                        print("Stopping...")
+                        self.should_stop = True
+                        break
+
+        print("Drawing complete!")
+        playsound("audio/ding.mp3")
 
     def stop(self):
         print("\nStopping... Returning to main menu.")
         self.should_stop = True
-        self.pIndex = 0  # Reset progress
-        self.pixels.clear()  # Clear loaded image
+        self.pixelIndex = 0  # Reset progress
         keyboard.unhook_all()  # Clean up all keyboard listeners
         self.main_menu()
         
