@@ -1,6 +1,7 @@
 import keyboard
 import questionary
 import time
+import threading
 from playsound import playsound
 
 from modules.calibration import ScreenCalibration
@@ -11,7 +12,8 @@ class PixelerApp:
     def __init__(self):
         self.pixelIndex = 0
         
-        self.paused = False
+        self.paused = True
+        self.stopped = False
 
         self.image_pixels = PixelExtractor()
 
@@ -49,47 +51,45 @@ class PixelerApp:
         print("Press F To Start Drawing")
         print("Press G To Stop and Return to Menu")
         
-        # Manual loop instead of keyboard.wait()
-        while True:
-            if keyboard.is_pressed('f') and len(self.image_pixels.get_pixels()) > 0:
-                self.draw_loop()
-                self.main_menu()
-            elif keyboard.is_pressed('g'):
-                self.stop()
-                break  # Exit loop and go back to menu
-            time.sleep(0.05)  # Small delay to prevent CPU spinning
+        draw_process = threading.Thread(target=self.draw_loop, daemon=True)
+        draw_process.start()
+
+        def toggle_pause():
+            self.paused = not(self.paused)
+            if self.paused:
+                print("Paused! Press F to resume.")
+            else:
+                print("Resuming...")    
+
+        keyboard.on_press_key('f', lambda _: toggle_pause())
+        keyboard.wait('g')
+
+        self.stop()
 
     def draw_loop(self):
         print("Drawing started...")
-
-        def check_for_inputs():
-            # Check for stop key during drawing
-            if keyboard.is_pressed('g'):
-                print("Stopping...")
-                return
-            # Pause and unpause
-            if keyboard.is_pressed('f'):
-                print("Paused, press F to resume.")
-                self.paused = True
-                while self.paused:
-                    time.sleep(0.1)
-                    if keyboard.is_pressed('f'):
-                        self.paused = False
+        self.stopped = False
 
         palette = set(self.image_pixels.get_pixels())
         for c in palette:
-            self.color_picker.pick(c)
             self.pixelIndex = 0
 
             for y in range(len(self.settings.y)):
                 for x in range(len(self.settings.x)):
+                    
+                    if self.stopped: return
+                    while self.paused:
+                        if self.stopped: return
+                        time.sleep(0.1)
+                    
                     current_color = self.image_pixels.get_color_at(x, y)
                     if current_color != c: continue
 
-                    self.pencil.draw_at(self.settings.x[x], self.settings.y[y])
+                    #self.color_picker.pick(c)
+                    self.pencil.draw_color_at(c, self.settings.x[x], self.settings.y[y])
                     self.pixelIndex += 1
 
-                    check_for_inputs()
+                    
 
         print("Drawing complete!")
         playsound("audio/ding.mp3")
@@ -97,7 +97,8 @@ class PixelerApp:
     def stop(self):
         print("\nStopping... Returning to main menu.")
         self.pixelIndex = 0  # Reset progress
-        self.paused = False
+        self.paused = True
+        self.stopped = True
         keyboard.unhook_all()  # Clean up all keyboard listeners
         self.main_menu()
         
