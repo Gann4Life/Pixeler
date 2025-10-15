@@ -10,8 +10,6 @@ class PixelExtractor:
 
     def get_color_at(self, x: int, y: int) -> str:
         '''Returns the hex color string at the given (x, y) coordinate.'''
-        print(x, y)
-        print(self.image)
         r, g, b, a = self.image.getpixel((x, y))
         return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
