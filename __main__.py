@@ -1,9 +1,7 @@
-# TODO: Screen calibration menu item (old pixelCounter.py), store results in a file.
-# TODO: AutoDraw menu item (only 32x32 for now) using previously calibrated settings stored in file. (json maybe?)
+# TODO: Possibility to load image from clipboard.
 
 from modules.calibration import ScreenCalibration
-
-import os, json, keyboard, autoit, time
+import keyboard, autoit, time
 import tkinter as tk
 from tkinter import filedialog
 from PIL import Image
@@ -15,6 +13,12 @@ class PixelerApp:
         self.pIndex = 0
         self.pixels = []
         self.should_stop = False
+
+        self.settings = ScreenCalibration()
+        self.settings.load_config()
+        color_picker = ColorPicker(self.settings)
+        self.pencil = PencilTool(self.settings, color_picker)
+
         self.main_menu()
 
     def main_menu(self):
@@ -27,12 +31,11 @@ class PixelerApp:
         options[choice]()
 
     def calibrate(self):
-        calibration = ScreenCalibration()
-        calibration.run(on_finish=self.main_menu)
+        self.settings.run(on_finish=self.main_menu)
 
     def begin_drawing(self):
         # Warn user if coordinates are not set properly
-        if len(x) != 32 or len(y) != 32 or colorCord == (0, 0) or inputCord == (0, 0) or closeCord == (0, 0):
+        if not(self.settings.is_config_valid()):
             print("Error: Please calibrate the screen first to set all necessary coordinates.")
             playsound("audio/error.mp3")
             self.main_menu()
@@ -88,14 +91,15 @@ class PixelerApp:
         print(f"Opened image: {file_path}")
         print("Image loaded! Press F to start drawing.")
 
+    # TODO: Change algorithm to draw all positions of each color in sequence.
     def draw_loop(self):
         print("Drawing started...")
         
-        for cy in range(len(y)):
+        for cy in range(len(self.settings.y)):
             if self.should_stop:
                 break
                 
-            for cx in range(len(x)):
+            for cx in range(len(self.settings.x)):
                 if self.should_stop:
                     break
                 
@@ -104,8 +108,8 @@ class PixelerApp:
                     playsound("audio/ding.mp3")
                     print("Drawing complete!")
                     return
-                
-                pencil.draw_color_at(self.pixels[self.pIndex], x[cx], y[cy])
+
+                self.pencil.draw_color_at(self.pixels[self.pIndex], self.settings.x[cx], self.settings.y[cy])
                 self.pIndex += 1
                 
                 # Check for stop key during drawing
@@ -122,13 +126,9 @@ class PixelerApp:
         keyboard.unhook_all()  # Clean up all keyboard listeners
         self.main_menu()
 
-
 class ColorPicker:
-    def __init__(self, color_cord, input_cord, close_cord, f_sleep_time):
-        self.color_cord = color_cord
-        self.input_cord = input_cord
-        self.close_cord = close_cord
-        self.f_sleep_time = f_sleep_time
+    def __init__(self, settings: ScreenCalibration):
+        self.settings = settings
         self.current_color = ""
 
     def pick(self, color: str) -> None:
@@ -141,40 +141,40 @@ class ColorPicker:
         self.close()
 
     def open(self) -> None:
-        cY, cX = self.color_cord
+        cY, cX = self.settings.colorCord
         autoit.mouse_move(cY, cX, 0)
-        time.sleep(self.f_sleep_time)
+        time.sleep(self.settings.get_frame_sleep_time())
         autoit.mouse_move(cY+1, cX+1, 0)
         time.sleep(0.005)
         autoit.mouse_move(cY-1, cX-1, 0)
-        time.sleep(self.f_sleep_time)
+        time.sleep(self.settings.get_frame_sleep_time())
         autoit.mouse_click()
 
     def write_color(self, color: str) -> None:
-        iY, iX = self.input_cord
+        iY, iX = self.settings.inputCord
         autoit.mouse_move(iY, iX, 0)
-        time.sleep(self.f_sleep_time)
+        time.sleep(self.settings.get_frame_sleep_time())
         autoit.mouse_move(iY+1, iX+1, 0)
         time.sleep(0.005)
         autoit.mouse_move(iY-1, iX-1, 0)
-        time.sleep(self.f_sleep_time)
+        time.sleep(self.settings.get_frame_sleep_time())
         autoit.mouse_click()
 
         keyboard.write(color)
 
     def close(self) -> None:
-        clY, clX = self.close_cord
+        clY, clX = self.settings.closeCord
         autoit.mouse_move(clY, clX, 0)
-        time.sleep(self.f_sleep_time)
+        time.sleep(self.settings.get_frame_sleep_time())
         autoit.mouse_move(clY+1, clX+1, 0)
         time.sleep(0.005)
         autoit.mouse_move(clY-1, clX-1, 0)
-        time.sleep(self.f_sleep_time)
+        time.sleep(self.settings.get_frame_sleep_time())
         autoit.mouse_click()
 
 class PencilTool:
-    def __init__(self, f_sleep_time, color_picker: ColorPicker):
-        self.f_sleep_time = f_sleep_time
+    def __init__(self, settings: ScreenCalibration, color_picker: ColorPicker):
+        self.settings = settings
         self.color_picker = color_picker
 
     def draw_at(self, x, y, speed=0):
@@ -189,59 +189,12 @@ class PencilTool:
         time.sleep(0.001)
         autoit.mouse_click()
         autoit.mouse_move(x, y, speed)
-        time.sleep(f_sleep_time)
+        time.sleep(self.settings.get_frame_sleep_time())
         autoit.mouse_click()
 
     def draw_color_at(self, color: str, x, y):
         self.color_picker.pick(color)
         self.draw_at(x, y, 0)
-
-# Set Button coordinates //CHANGE THIS COORDINATES WITH YOUR COORDINATES (By using PixelCounter.py)
-colorCord = [0, 0]  # Colour Select Button
-inputCord = [0, 0]  # Input Text Area
-closeCord = [0, 0]  # Close Button
-
-# Set x and y coordinates //CHANGE THIS COORDINATES WITH YOUR COORDINATES (By using PixelCounter.py)
-x = []
-y = []
-
-# TODO: Encapsulate loading and saving config in a separate function or class.
-# Load coordinates from config.json if it exists
-if os.path.exists('config.json'):
-    with open('config.json', 'r') as config_file:
-        config_data = json.load(config_file)
-        x = config_data.get("x", x)
-        y = config_data.get("y", y)
-        colorCord = tuple(config_data.get("colorCord", colorCord))
-        inputCord = tuple(config_data.get("inputCord", inputCord))
-        closeCord = tuple(config_data.get("closeCord", closeCord))
-    print("Loaded configuration from config.json.")
-    # Print loaded coordinates for verification
-    print("X coordinates:", x)
-    print("Y coordinates:", y)
-    print("Color coordinates:", colorCord)
-    print("Input coordinates:", inputCord)
-    print("Close coordinates:", closeCord)
-else:
-    print("No configuration file found. Please calibrate the screen before trying to draw.")
-
-# This is to make sure that amount of coordinates are correct
-print("resolution:", len(x), "x", len(y))
-
-# This Functions makes sure that it can run smooth without any problems based on Your FPS
-def calculate_f_sleep_time(fps):
-    frame_time = 1 / fps
-
-    # We'll use a slightly longer sleep time to ensure the game registers the input
-    f_sleep_time = frame_time * 1.2
-
-    return f_sleep_time
-
-fps = int(input("\nEnter your Roblox Average FPS: "))
-f_sleep_time = calculate_f_sleep_time(fps)
-print(f"Optimal delay is: {f_sleep_time:.4f} seconds")
         
 if __name__ == "__main__":
-    color_picker = ColorPicker(colorCord, inputCord, closeCord, f_sleep_time)
-    pencil = PencilTool(f_sleep_time, color_picker)
     app = PixelerApp()

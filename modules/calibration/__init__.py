@@ -6,6 +6,9 @@ import json
 
 class ScreenCalibration:
     def __init__(self):
+        self.config_filename = 'config.json'
+
+        self.fps = 0
         self.x = []
         self.y = []
         self.colorCord = [0, 0]
@@ -13,6 +16,9 @@ class ScreenCalibration:
         self.closeCord = [0, 0]
     
     def run(self, on_finish: callable = None):
+        self.fps = int(input("\nEnter your Roblox Average FPS: "))
+        print(f"Optimal delay is: {self.get_frame_sleep_time():.4f} seconds")
+
         print("\nPress |F| to add Mouse Coordinates to the List")
         print("Cooldown for each press is 0.1s \n")
         print("Press |T| to to add Color Button Coordinates to the List")
@@ -80,23 +86,12 @@ class ScreenCalibration:
         playsound.playsound("audio/ypop.wav")
     
     def save_and_exit(self, on_finish: callable = None):
-        if len(self.x) != 32 or len(self.y) != 32 or self.colorCord == [0, 0] or self.inputCord == [0, 0] or self.closeCord == [0, 0]:
+        if not(self.is_config_valid()):
             print("You must set all coordinates before exiting!")
             playsound.playsound("audio/error.mp3")
             return False  # Indicate failure
         
-        config_data = {
-            "x": self.x,
-            "y": self.y,
-            "colorCord": self.colorCord,
-            "inputCord": self.inputCord,
-            "closeCord": self.closeCord,
-        }
-        
-        with open('config.json', 'w+') as config_file:
-            json.dump(config_data, config_file, indent=4)
-        
-        print("Configuration saved to config.json.")
+        self.save_config(self.config_filename)
         playsound.playsound("audio/ding.mp3")
         
         keyboard.unhook_all()  # Clean up keyboard listeners
@@ -105,3 +100,48 @@ class ScreenCalibration:
             on_finish()
         
         return True  # Indicate success
+    
+    def is_config_valid(self):
+        return (len(self.x) == 32 and len(self.y) == 32 and
+                self.colorCord != [0, 0] and
+                self.inputCord != [0, 0] and
+                self.closeCord != [0, 0] and
+                self.fps > 0)
+    
+    # This Functions makes sure that it can run smooth without any problems based on Your FPS
+    def get_frame_sleep_time(self):
+            frame_time = 1 / self.fps
+
+            # We'll use a slightly longer sleep time to ensure the game registers the input
+            f_sleep_time = frame_time * 1.2
+
+            return f_sleep_time
+
+    def save_config(self, filepath='config.json'):
+        config_data = {
+            "fps": self.fps,
+            "colorCord": self.colorCord,
+            "inputCord": self.inputCord,
+            "closeCord": self.closeCord,
+            "x": self.x,
+            "y": self.y,
+        }
+        with open(filepath, 'w+') as config_file:
+            json.dump(config_data, config_file, indent=4)
+        print("Configuration saved to", filepath)
+    
+    def load_config(self, filepath='config.json'):
+        try:
+            with open(filepath, 'r') as config_file:
+                config_data = json.load(config_file)
+                self.fps = config_data.get("fps", 0)
+                self.colorCord = config_data.get("colorCord", [0, 0])
+                self.inputCord = config_data.get("inputCord", [0, 0])
+                self.closeCord = config_data.get("closeCord", [0, 0])
+                self.x = config_data.get("x", [])
+                self.y = config_data.get("y", [])
+            print("Configuration loaded from config.json.")
+        except FileNotFoundError:
+            print("No configuration file found. Please run calibration.")
+        except json.JSONDecodeError:
+            print("Error decoding JSON from the configuration file.")
