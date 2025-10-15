@@ -10,7 +10,6 @@ from modules.input_control import ColorPicker, PencilTool
 class PixelerApp:
     def __init__(self):
         self.pixelIndex = 0
-        self.should_stop = False
         
         self.image_pixels = PixelExtractor()
 
@@ -48,8 +47,6 @@ class PixelerApp:
         print("Press F To Start Drawing")
         print("Press G To Stop and Return to Menu")
         
-        self.should_stop = False
-        
         # Manual loop instead of keyboard.wait()
         while True:
             if keyboard.is_pressed('f') and len(self.image_pixels.get_pixels()) > 0:
@@ -67,14 +64,9 @@ class PixelerApp:
         for c in palette:
             self.color_picker.pick(c)
             self.pixelIndex = 0
+
             for y in range(len(self.settings.y)):
-                if self.should_stop:
-                    break
-
                 for x in range(len(self.settings.x)):
-                    if self.should_stop:
-                        break
-
                     current_color = self.image_pixels.get_color_at(x, y)
                     if current_color != c: continue
 
@@ -84,15 +76,13 @@ class PixelerApp:
                     # Check for stop key during drawing
                     if keyboard.is_pressed('g'):
                         print("Stopping...")
-                        self.should_stop = True
-                        break
+                        return
 
         print("Drawing complete!")
         playsound("audio/ding.mp3")
 
     def stop(self):
         print("\nStopping... Returning to main menu.")
-        self.should_stop = True
         self.pixelIndex = 0  # Reset progress
         keyboard.unhook_all()  # Clean up all keyboard listeners
         self.main_menu()
