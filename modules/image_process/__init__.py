@@ -34,7 +34,7 @@ class PixelExtractor:
             file_path = filedialog.askopenfilename()
         self.image = Image.open(file_path)
         self.try_convert_to_rgba()
-        self.resize()
+        self.crop_resize()
         print(f"Loaded image: {file_path} ({self.image.width}x{self.image.height})")
 
     def load_image_clipboard(self):
@@ -65,11 +65,19 @@ class PixelExtractor:
         img = img.resize(size)
         self.image = img
 
-    def resize_crop(self, size=(32, 32)):
-        '''Resizes the image without losing aspect ratio and crops the excess.'''
-        img = self.image.copy()
-        img.thumbnail((max(size), max(size)))
-        self.image = img
+    def crop_resize(self, size=(32, 32)):
+        '''Crops the image to fit 1:1 aspect ratio then resizes the image.'''
+        width, height = self.image.size
+
+        resize_to = min(width, height)
+
+        left = (width - resize_to)/2
+        top = (height - resize_to)/2
+        right = (width + resize_to)/2
+        bottom = (height + resize_to)/2
+
+        self.image = self.image.crop((left, top, right, bottom))
+        self.resize()
 
     def try_convert_to_rgba(self):
         '''Converts the image to RGBA mode.'''

@@ -1,5 +1,3 @@
-# TODO: Possibility to load image from clipboard.
-
 import keyboard
 import questionary
 import time
