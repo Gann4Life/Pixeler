@@ -39,16 +39,25 @@ class PixelExtractor:
 
     def load_image_clipboard(self):
         '''Loads an image from the clipboard.'''
-        clipboard_content = ImageGrab.grabclipboard()
-        
-        if isinstance(clipboard_content[0], str):
-            self.load_image_file(clipboard_content[0])
-            return
 
-        self.image = clipboard_content
-        if self.image is None:
-            raise ValueError("No image found in clipboard.")    
-        self.try_convert_to_rgba()
+        try:
+            clipboard_content = ImageGrab.grabclipboard()
+            
+            if isinstance(clipboard_content[0], str):
+                self.load_image_file(clipboard_content[0])
+                return
+
+            self.image = clipboard_content
+            if self.image is None:
+                raise ValueError("No image found in clipboard.")    
+            self.try_convert_to_rgba()
+        except TypeError as type_error:
+            print("__ ERROR __")
+            print("Please copy an image to your clipboard.")
+            print(type_error)
+            print("_"*8)
+        except Exception as e:
+            raise e
 
     def resize(self, size=(32, 32)):
         '''Resizes the image to the given size.'''
