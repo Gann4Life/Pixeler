@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog
 from PIL import Image, ImageFile, ImageGrab, UnidentifiedImageError
-from playsound import playsound
+from ..resources import Audio
 
 class PixelExtractor:
     '''Extracts pixel data from an image.'''
@@ -42,13 +42,13 @@ class PixelExtractor:
             print("Unsupported file extension.")
             print(f'"{e}"')
             print("_"*8)
-            playsound("audio/error.mp3")
+            Audio.play_error()
         except PermissionError as e:
             print("__ ERROR __")
             print("Not enough permissions, please be careful.")
             print(f'"{e}"')
             print("_"*8)
-            playsound("audio/error.mp3")
+            Audio.play_error()
 
 
     def load_image_clipboard(self):
@@ -70,9 +70,9 @@ class PixelExtractor:
             print("Please copy an image to your clipboard.")
             print(f'"{type_error}"')
             print("_"*8)
-            playsound("audio/error.mp3")
+            Audio.play_error()
         except Exception as e:
-            playsound("audio/error.mp3")
+            Audio.play_error()
             raise e
 
     def resize(self, size=(32, 32)):

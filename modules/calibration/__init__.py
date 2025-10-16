@@ -1,8 +1,8 @@
-import keyboard
 import json
 import questionary
-from playsound import playsound
 from pynput import mouse
+
+from ..resources import Audio
 
 class FramerateValidator(questionary.Validator):
     def validate(self, document):
@@ -81,9 +81,9 @@ class ScreenCalibration:
         while len(newx) != 32:          
             x, y = self.get_left_click_point()
             newx.append(x)
-            playsound("audio/xpop.wav")
+            Audio.play_xpop()
         self.x = newx
-        playsound("audio/ding.mp3")
+        Audio.play_ding()
 
     def step2(self):
         # Ask to click left side pixels top to bottom
@@ -92,30 +92,30 @@ class ScreenCalibration:
         while len(newy) != 32:
             x, y = self.get_left_click_point()
             newy.append(y)
-            playsound("audio/ypop.wav")
+            Audio.play_ypop()
         self.y = newy
-        playsound("audio/ding.mp3")
+        Audio.play_ding()
 
     def step3(self):
         # Ask to click color picker location
         print("3. Click where the color picker is located.")
         self.colorCord = self.get_left_click_point()
         print(self.colorCord)
-        playsound("audio/xpop.wav")
+        Audio.play_xpop()
 
     def step4(self):
         # Ask to click color picker hex input
         print("4. Click where the color text input is located.")
         self.inputCord = self.get_left_click_point()
         print(self.inputCord)
-        playsound("audio/xpop.wav")
+        Audio.play_xpop()
 
     def step5(self):
         # Ask to click color picker's close button
         print("5. Click where the color picker's close button is located.")
         self.closeCord = self.get_left_click_point()
         print(self.closeCord)
-        playsound("audio/ypop.wav")
+        Audio.play_ypop()
        
     def is_config_valid(self):
         return (len(self.x) == 32 and len(self.y) == 32 and
@@ -135,12 +135,12 @@ class ScreenCalibration:
         '''Saves settings only if the values provided are valid. Returns False if it fails.'''
         if not(self.is_config_valid()):
             print("Please configure everything before saving!")
-            playsound("audio/error.mp3")
+            Audio.play_error()
             return False  # Indicate failure
         self.save_config()
 
     def save_config(self, filepath='config.json'):
-        playsound("audio/ding.mp3", False)
+        Audio.play_ding(False)
         config_data = {
             "fps": self.fps,
             "colorCord": self.colorCord,
@@ -166,7 +166,7 @@ class ScreenCalibration:
             print("Configuration loaded from config.json.")
         except FileNotFoundError:
             print("No configuration file found. Please run calibration.")
-            playsound("audio/error.mp3")
+            Audio.play_error()
         except json.JSONDecodeError:
             print("Error decoding JSON from the configuration file.")
-            playsound("audio/error.mp3")
+            Audio.play_error()

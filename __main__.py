@@ -1,10 +1,10 @@
 import keyboard
 import time
 import threading
-from playsound import playsound
 from tkinter import *
 from tkinter.font import Font
 
+from modules.resources import Audio
 from modules.calibration import ScreenCalibration
 from modules.image_process import PixelExtractor
 from modules.input_control import ColorPicker, PencilTool
@@ -96,7 +96,7 @@ class PixelerApp:
         # Warn user if coordinates are not set properly
         if not(self.settings.is_config_valid()):
             print("Error: Please calibrate the screen first to set all necessary coordinates.")
-            playsound("audio/error.mp3")
+            Audio.play_error()
             self.main_menu()
             return
 
@@ -122,7 +122,7 @@ class PixelerApp:
         if self.image_pixels.image is None:
             self.gui.display_error("Please load an image first.")
             self.gui.btnDraw.grid()
-            playsound("audio/error.mp3")
+            Audio.play_error()
             return
 
         print("Drawing started...")
@@ -148,7 +148,7 @@ class PixelerApp:
                     self.pencil.draw_color_at(c, self.settings.x[x], self.settings.y[y])
                     self.pixelIndex += 1
         print("Drawing complete!")
-        playsound("audio/ding.mp3")
+        Audio.play_ding()
 
     def stop(self):
         print("\nStopping... Returning to main menu.")

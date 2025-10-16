@@ -5,7 +5,7 @@ REM Instead of using pixelCounter.py and pixeler.py separately, we now use __mai
 REM This simplifies the user experience, ensures that all dependencies are managed in one place, and reduces redundancy in the codebase.
 REM Files under .\python\ folder will become obsolete when the main file is finished.
 
-REM Check if .venv folder exists, if it doesn't, run install-requirements.bat and activate the virtual environment
+REM Check if .venv folder exists, if it doesn't, create it, if it does, installs requirements.
 IF NOT EXIST .venv (
     REM Inform the user that the virtual environment is being set up
     ECHO Setting up virtual environment and installing requirements...
