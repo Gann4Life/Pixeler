@@ -150,7 +150,7 @@ class ScreenCalibration:
             return f_sleep_time
 
     def save_config(self, filepath='config.json'):
-        playsound("audio/ding.mp3")
+        playsound("audio/ding.mp3", False)
         config_data = {
             "fps": self.fps,
             "colorCord": self.colorCord,
