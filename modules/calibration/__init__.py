@@ -46,10 +46,35 @@ class ScreenCalibration:
         return (x, y)
 
     def run(self, on_finish: callable = None):
+        calibrating = True
+        def leave(): 
+            nonlocal calibrating
+            calibrating = False
+            print("[Calibratoin] Leaving.")
+        
+        # print("\nWARNING: All mouse clicks will be recorded now, please be as precise as you can.\n")
+
+        while calibrating:
+            options = {
+                "Set framerate": self.ask_fps,
+                "Step 1: Horizontal pixels": self.step1,
+                "Step 2: Vertical pixels": self.step2,
+                "Step 3: Color picker position": self.step3,
+                "Step 4: Color picker's hex input field": self.step4,
+                "Step 5: Color picker's close button": self.step5,
+                "Save": self.save_config,
+                "Exit": leave
+            }
+
+            choice = questionary.rawselect("Pick a setting to calibrate", choices=options.keys()).ask()
+            options[choice]()
+
+    def ask_fps(self):
         print("Tip: use SHIFT + F5 in roblox to view your FPS.")
         self.fps = int(questionary.text("Enter your Roblox average FPS", "30", validate=FramerateValidator).ask())
         print(f"Optimal delay is: {self.get_frame_sleep_time():.4f} seconds")
-        
+
+    def step1(self):
         # Ask to click top side pixels left to right
         print("1. Click all pixels in the top side of the canvas, from left to right.")
         newx = []
@@ -60,6 +85,7 @@ class ScreenCalibration:
         self.x = newx
         playsound("audio/ding.mp3")
 
+    def step2(self):
         # Ask to click left side pixels top to bottom
         print("2. Click all pixels in the left side of the canvas, from top to bottom.")
         newy = []
@@ -70,25 +96,26 @@ class ScreenCalibration:
         self.y = newy
         playsound("audio/ding.mp3")
 
+    def step3(self):
         # Ask to click color picker location
         print("3. Click where the color picker is located.")
         self.colorCord = self.get_left_click_point()
         print(self.colorCord)
         playsound("audio/xpop.wav")
 
+    def step4(self):
         # Ask to click color picker hex input
         print("4. Click where the color text input is located.")
         self.inputCord = self.get_left_click_point()
         print(self.inputCord)
         playsound("audio/xpop.wav")
 
+    def step5(self):
         # Ask to click color picker's close button
         print("5. Click where the color picker's close button is located.")
         self.closeCord = self.get_left_click_point()
         print(self.closeCord)
         playsound("audio/ypop.wav")
-
-        self.save_and_exit(on_finish)
     
     def save_and_exit(self, on_finish: callable = None):
         if not(self.is_config_valid()):
@@ -123,6 +150,7 @@ class ScreenCalibration:
             return f_sleep_time
 
     def save_config(self, filepath='config.json'):
+        playsound("audio/ding.mp3")
         config_data = {
             "fps": self.fps,
             "colorCord": self.colorCord,
