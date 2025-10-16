@@ -6,13 +6,13 @@ class Audio:
         playsound(f'resources/audio/{audio_name}', block)
 
     def play_error(block : bool = True):
-       Audio.play("error.mp3", block)
+       Audio.play("sfx Error.mp3", block)
 
     def play_ding(block : bool = True):
-        Audio.play("ding.mp3", block)
+        Audio.play("sfx Success.mp3", block)
 
     def play_xpop(block : bool = True):
-        Audio.play("xpop.wav", block)
+        Audio.play("sfx XPop.mp3", block)
 
     def play_ypop(block : bool = True):
-        Audio.play("ypop.wav", block)
+        Audio.play("sfx YPop.mp3", block)
