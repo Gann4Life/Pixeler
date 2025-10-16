@@ -71,7 +71,7 @@ class ScreenCalibration:
 
     def ask_fps(self):
         print("Tip: use SHIFT + F5 in roblox to view your FPS.")
-        self.fps = int(questionary.text("Enter your Roblox average FPS", "30", validate=FramerateValidator).ask())
+        self.fps = int(questionary.text("Enter your Roblox average FPS", "60", validate=FramerateValidator).ask())
         print(f"Optimal delay is: {self.get_frame_sleep_time():.4f} seconds")
 
     def step1(self):
