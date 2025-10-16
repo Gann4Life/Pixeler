@@ -116,23 +116,7 @@ class ScreenCalibration:
         self.closeCord = self.get_left_click_point()
         print(self.closeCord)
         playsound("audio/ypop.wav")
-    
-    def save_and_exit(self, on_finish: callable = None):
-        if not(self.is_config_valid()):
-            print("You must set all coordinates before exiting!")
-            playsound("audio/error.mp3")
-            return False  # Indicate failure
-        
-        self.save_config(self.config_filename)
-        playsound("audio/ding.mp3")
-        
-        keyboard.unhook_all()  # Clean up keyboard listeners
-        
-        if on_finish:
-            on_finish()
-        
-        return True  # Indicate success
-    
+       
     def is_config_valid(self):
         return (len(self.x) == 32 and len(self.y) == 32 and
                 self.colorCord != [0, 0] and
@@ -143,10 +127,8 @@ class ScreenCalibration:
     # This Functions makes sure that it can run smooth without any problems based on Your FPS
     def get_frame_sleep_time(self):
             frame_time = 1 / self.fps
-
             # We'll use a slightly longer sleep time to ensure the game registers the input
             f_sleep_time = frame_time * 1.2
-
             return f_sleep_time
 
     def safe_save(self):
