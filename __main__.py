@@ -52,7 +52,7 @@ class PixelerGUI:
         threading.Thread(target=self.app.begin_drawing, daemon=True).start()
 
     def reset(self):
-        self.lblActivityInfo.configure(text="| Close | Calibrate | Draw | Load File | Load Clipboard |")
+        self.lblActivityInfo.configure(text="| Close | Calibrate | Draw | Load File | Load Clipboard |", foreground='white', background='black')
         self.btnDraw.grid()
         self.btnCalibrate.grid()
 
@@ -132,6 +132,7 @@ class PixelerApp:
         palette = sorted(set(self.image_pixels.get_pixels()))
 
         for c in palette:
+            if c == PixelExtractor.TRANSPARENT_COLOR: continue
             self.pixelIndex = 0
 
             for y in range(len(self.settings.y)):

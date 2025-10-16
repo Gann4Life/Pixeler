@@ -6,6 +6,8 @@ from ..resources import Audio
 class PixelExtractor:
     '''Extracts pixel data from an image.'''
 
+    TRANSPARENT_COLOR = "TRANSPARENT"
+
     def __init__(self):
         self.image : ImageFile = None
 
@@ -22,6 +24,7 @@ class PixelExtractor:
             for x in range(self.image.width):
                 r, g, b, a = self.image.getpixel((x, y))
                 color = "#{:02x}{:02x}{:02x}".format(r, g, b)
+                if a == 0: color = PixelExtractor.TRANSPARENT_COLOR
                 pixels.append(color)
         return pixels
 
