@@ -1,10 +1,8 @@
-import time
-import pyautogui
 import keyboard
-import playsound
 import json
-from pynput import mouse
 import questionary
+from playsound import playsound
+from pynput import mouse
 
 class FramerateValidator(questionary.Validator):
     def validate(self, document):
@@ -48,6 +46,7 @@ class ScreenCalibration:
         return (x, y)
 
     def run(self, on_finish: callable = None):
+        print("Tip: use SHIFT + F5 in roblox to view your FPS.")
         self.fps = int(questionary.text("Enter your Roblox average FPS", "30", validate=FramerateValidator).ask())
         print(f"Optimal delay is: {self.get_frame_sleep_time():.4f} seconds")
         
@@ -57,9 +56,9 @@ class ScreenCalibration:
         while len(newx) != 32:          
             x, y = self.get_left_click_point()
             newx.append(x)
-            playsound.playsound("audio/xpop.wav")
+            playsound("audio/xpop.wav")
         self.x = newx
-        playsound.playsound("audio/ding.mp3")
+        playsound("audio/ding.mp3")
 
         # Ask to click left side pixels top to bottom
         print("2. Click all pixels in the left side of the canvas, from top to bottom.")
@@ -67,38 +66,38 @@ class ScreenCalibration:
         while len(newy) != 32:
             x, y = self.get_left_click_point()
             newy.append(y)
-            playsound.playsound("audio/ypop.wav")
+            playsound("audio/ypop.wav")
         self.y = newy
-        playsound.playsound("audio/ding.mp3")
+        playsound("audio/ding.mp3")
 
         # Ask to click color picker location
         print("3. Click where the color picker is located.")
         self.colorCord = self.get_left_click_point()
         print(self.colorCord)
-        playsound.playsound("audio/xpop.wav")
+        playsound("audio/xpop.wav")
 
         # Ask to click color picker hex input
         print("4. Click where the color text input is located.")
         self.inputCord = self.get_left_click_point()
         print(self.inputCord)
-        playsound.playsound("audio/xpop.wav")
+        playsound("audio/xpop.wav")
 
         # Ask to click color picker's close button
         print("5. Click where the color picker's close button is located.")
         self.closeCord = self.get_left_click_point()
         print(self.closeCord)
-        playsound.playsound("audio/ypop.wav")
+        playsound("audio/ypop.wav")
 
         self.save_and_exit(on_finish)
     
     def save_and_exit(self, on_finish: callable = None):
         if not(self.is_config_valid()):
             print("You must set all coordinates before exiting!")
-            playsound.playsound("audio/error.mp3")
+            playsound("audio/error.mp3")
             return False  # Indicate failure
         
         self.save_config(self.config_filename)
-        playsound.playsound("audio/ding.mp3")
+        playsound("audio/ding.mp3")
         
         keyboard.unhook_all()  # Clean up keyboard listeners
         
@@ -149,5 +148,7 @@ class ScreenCalibration:
             print("Configuration loaded from config.json.")
         except FileNotFoundError:
             print("No configuration file found. Please run calibration.")
+            playsound("audio/error.mp3")
         except json.JSONDecodeError:
             print("Error decoding JSON from the configuration file.")
+            playsound("audio/error.mp3")

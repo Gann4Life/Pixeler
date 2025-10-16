@@ -42,17 +42,14 @@ class PixelerGUI:
         self.lblActivityInfo.grid(column=5, row=0)
 
     def calibrate(self):
-        self.display_message('[ CALIBRATION MODE ] Please check the console to configure the program.')
+        self.display_message('[ CALIBRATION MODE ] Please check the console for a step by step guide.')
         self.btnCalibrate.grid_remove()
         threading.Thread(target=self.app.calibrate, daemon=True).start()
 
     def draw(self):
         self.display_message("[ DRAW MODE ] Press F to start drawing and toggle pause, press G to stop completely.")
         self.btnDraw.grid_remove()
-        print("Removing from grid")
         threading.Thread(target=self.app.begin_drawing, daemon=True).start()
-        print("Adding to grid again")
-        # self.btnDraw.grid()
 
     def reset(self):
         self.lblActivityInfo.configure(text="| Calibrate | Draw | Load File | Load Clipboard |")
@@ -79,7 +76,6 @@ class PixelerApp:
         self.stopped = False
 
         self.image_pixels = PixelExtractor()
-
         self.settings = ScreenCalibration()
         self.settings.load_config()
         self.color_picker = ColorPicker(self.settings)
@@ -123,6 +119,12 @@ class PixelerApp:
         self.stop()
 
     def draw_loop(self):
+        if self.image_pixels.image is None:
+            self.gui.display_error("Please load an image first.")
+            self.gui.btnDraw.grid()
+            playsound("audio/error.mp3")
+            return
+
         print("Drawing started...")
         self.stopped = False
 
