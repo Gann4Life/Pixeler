@@ -1,12 +1,75 @@
 import keyboard
-import questionary
 import time
 import threading
 from playsound import playsound
+from tkinter import *
+from tkinter.font import Font
 
 from modules.calibration import ScreenCalibration
 from modules.image_process import PixelExtractor
 from modules.input_control import ColorPicker, PencilTool
+
+class PixelerGUI:
+    def __init__(self, root : Tk, app):
+        self.app = app
+        app.set_gui(self)
+
+        FONT =  Font(size=20)
+
+        self.root = root
+        self.root.state("zoomed")
+        self.root.overrideredirect(True)
+        self.root.attributes("-topmost", True)
+        self.root.attributes("-transparentcolor", "blue")
+        self.root.configure(bg="blue")
+
+        self.btnClose = Button(self.root, text="❌", command=exit, foreground='white', background='black', font=FONT)
+        self.btnClose.grid(column=0, row=0)
+
+        self.btnCalibrate = Button(self.root, text="⚙", command=self.calibrate, foreground='white', background='black', font=FONT)
+        self.btnCalibrate.grid(column=1, row=0)
+
+        self.btnDraw = Button(self.root, text=f"✏", command=self.draw, foreground='white', background='black', font=FONT)
+        self.btnDraw.grid(column=2, row=0)
+
+        self.btnLoadFile = Button(self.root, text="📁", command=self.load_file, foreground='white', background='black', font=FONT)
+        self.btnLoadFile.grid(column=3, row=0)
+
+        self.btnLoadClipboard = Button(self.root, text="📋", command=self.laod_clipboard, foreground='white', background='black', font=FONT)
+        self.btnLoadClipboard.grid(column=4, row=0)
+
+        self.lblActivityInfo = Label(self.root, text="| Calibrate | Draw | Load File | Load Clipboard |", foreground='white', background='black', font=FONT)
+        self.lblActivityInfo.grid(column=5, row=0)
+
+    def calibrate(self):
+        self.display_message('[ CALIBRATION MODE ] Please check the console to configure the program.')
+        self.btnCalibrate.grid_remove()
+        threading.Thread(target=self.app.calibrate, daemon=True).start()
+
+    def draw(self):
+        self.display_message("[ DRAW MODE ] Press F to start drawing and toggle pause, press G to stop completely.")
+        self.btnDraw.grid_remove()
+        print("Removing from grid")
+        threading.Thread(target=self.app.begin_drawing, daemon=True).start()
+        print("Adding to grid again")
+        # self.btnDraw.grid()
+
+    def reset(self):
+        self.lblActivityInfo.configure(text="| Calibrate | Draw | Load File | Load Clipboard |")
+        self.btnDraw.grid()
+        self.btnCalibrate.grid()
+
+    def load_file(self):
+        self.app.image_pixels.load_image_file()
+
+    def laod_clipboard(self):
+        self.app.image_pixels.load_image_clipboard()
+
+    def display_message(self, message : str) -> None:
+        self.lblActivityInfo.configure(text=message)
+
+    def display_error(self, message : str) -> None:
+        self.lblActivityInfo.configure(text=f"ERROR: {message}", foreground='red')
 
 class PixelerApp:
     def __init__(self):
@@ -22,23 +85,16 @@ class PixelerApp:
         self.color_picker = ColorPicker(self.settings)
         self.pencil = PencilTool(self.settings, self.color_picker)
 
-        self.main_menu()
+    #     self.main_menu()
+    def set_gui(self, gui : PixelerGUI):
+        self.gui = gui
 
     def main_menu(self):
-        options = {
-            "Calibrate Screen": self.calibrate,
-            "Begin Drawing": self.begin_drawing,
-            "Load Image from File": self.image_pixels.load_image_file,
-            "Load Image from Clipboard": self.image_pixels.load_image_clipboard,
-            "Exit": exit
-        }
-
-        choice = questionary.rawselect("Select an option:", choices=options.keys()).ask()
-        options[choice]()
-        self.main_menu()
+        self.gui.reset()
 
     def calibrate(self):
         self.settings.run()
+        self.main_menu()
 
     def begin_drawing(self):
         # Warn user if coordinates are not set properly
@@ -76,7 +132,6 @@ class PixelerApp:
 
             for y in range(len(self.settings.y)):
                 for x in range(len(self.settings.x)):
-                    
                     if self.stopped: return
                     while self.paused:
                         if self.stopped: return
@@ -88,9 +143,6 @@ class PixelerApp:
                     #self.color_picker.pick(c)
                     self.pencil.draw_color_at(c, self.settings.x[x], self.settings.y[y])
                     self.pixelIndex += 1
-
-                    
-
         print("Drawing complete!")
         playsound("audio/ding.mp3")
 
@@ -101,6 +153,9 @@ class PixelerApp:
         self.stopped = True
         keyboard.unhook_all()  # Clean up all keyboard listeners
         self.main_menu()
-        
+
 if __name__ == "__main__":
     app = PixelerApp()
+    root = Tk()
+    gui = PixelerGUI(root, app)
+    root.mainloop()

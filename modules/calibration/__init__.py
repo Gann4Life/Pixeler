@@ -3,10 +3,24 @@ import pyautogui
 import keyboard
 import playsound
 import json
+from pynput import mouse
+import questionary
+
+class FramerateValidator(questionary.Validator):
+    def validate(self, document):
+        try:
+            value = int(document.text)
+            if value <= 0: raise ValueError
+        except Exception:
+            raise questionary.ValidationError(message="Only numbers superior to zero are allowed.")
 
 class ScreenCalibration:
     def __init__(self):
+        self.last_click_position = (0, 0)
+        self.listen_mouse = False
+
         self.config_filename = 'config.json'
+        self.cancel_calibration = False
 
         self.fps = 0
         self.x = []
@@ -14,76 +28,68 @@ class ScreenCalibration:
         self.colorCord = [0, 0]
         self.inputCord = [0, 0]
         self.closeCord = [0, 0]
-    
-    def run(self, on_finish: callable = None):
-        self.fps = int(input("\nEnter your Roblox Average FPS: "))
-        print(f"Optimal delay is: {self.get_frame_sleep_time():.4f} seconds")
 
-        print("\nPress |F| to add Mouse Coordinates to the List")
-        print("Cooldown for each press is 0.1s \n")
-        print("Press |T| to to add Color Button Coordinates to the List")
-        print("Press |Y| to add Input area Coordinates to the List")
-        print("Press |U| to add Close Button Coordinates to the List")
-        print("Press |G| to save and exit.")
+    def wait_for_user_click(self):
+        """Wait until the user clicks, then return (x, y, button)."""
+        result = {}
+
+        def on_click(x, y, button, pressed):
+            if pressed and button == mouse.Button.left:
+                result['pos'] = (x, y, button)
+                listener.stop()  # stop the listener to end the blocking call
+
+        listener = mouse.Listener(on_click=on_click)
+        listener.start()
+        listener.join()  # blocks until listener.stop() is called
+        return result['pos']
+    
+    def get_left_click_point(self):
+        x, y, btn = self.wait_for_user_click()
+        return (x, y)
+
+    def run(self, on_finish: callable = None):
+        self.fps = int(questionary.text("Enter your Roblox average FPS", "30", validate=FramerateValidator).ask())
+        print(f"Optimal delay is: {self.get_frame_sleep_time():.4f} seconds")
         
-        # Use a manual loop instead of keyboard.wait()
-        while True:
-            if keyboard.is_pressed('f'):
-                self.add_mouse_coordinate()
-                time.sleep(0.3)  # Debounce
-            elif keyboard.is_pressed('t'):
-                self.set_color_button()
-                time.sleep(0.3)
-            elif keyboard.is_pressed('y'):
-                self.set_input_area()
-                time.sleep(0.3)
-            elif keyboard.is_pressed('u'):
-                self.set_close_button()
-                time.sleep(0.3)
-            elif keyboard.is_pressed('g'):
-                if self.save_and_exit(on_finish):
-                    break  # Only exit if save was successful
-            time.sleep(0.05)  # Small delay to prevent CPU spinning
-    
-    def printValues(self):
-        print(f"x = {self.x} y = {self.y} \n")
-        print("Amount of X values are:", len(self.x))
-        print("Amount of Y values are:", len(self.y))
-        time.sleep(0.3)
-    
-    def printPercentage(self):
-        percentage = len(self.x + self.y) / 64
-        print(f"Progress: {round(percentage * 100)}%", end='\r')
-    
-    # ///
-    def add_mouse_coordinate(self):
-        cordX, cordY = pyautogui.position()
-        if len(self.x) != 32:
-            self.x.append(cordX)
+        # Ask to click top side pixels left to right
+        print("1. Click all pixels in the top side of the canvas, from left to right.")
+        newx = []
+        while len(newx) != 32:          
+            x, y = self.get_left_click_point()
+            newx.append(x)
             playsound.playsound("audio/xpop.wav")
-            self.printPercentage()
-        elif len(self.x) == 32 and len(self.y) != 32:
-            self.y.append(cordY)
+        self.x = newx
+        playsound.playsound("audio/ding.mp3")
+
+        # Ask to click left side pixels top to bottom
+        print("2. Click all pixels in the left side of the canvas, from top to bottom.")
+        newy = []
+        while len(newy) != 32:
+            x, y = self.get_left_click_point()
+            newy.append(y)
             playsound.playsound("audio/ypop.wav")
-            self.printPercentage()
-            if len(self.x) == 32 and len(self.y) == 32:
-                playsound.playsound("audio/ding.mp3")
-                self.printValues()
-    
-    def set_color_button(self):
-        self.colorCord = list(pyautogui.position())
-        print("Colour Select Button: ", self.colorCord)
+        self.y = newy
+        playsound.playsound("audio/ding.mp3")
+
+        # Ask to click color picker location
+        print("3. Click where the color picker is located.")
+        self.colorCord = self.get_left_click_point()
+        print(self.colorCord)
+        playsound.playsound("audio/xpop.wav")
+
+        # Ask to click color picker hex input
+        print("4. Click where the color text input is located.")
+        self.inputCord = self.get_left_click_point()
+        print(self.inputCord)
+        playsound.playsound("audio/xpop.wav")
+
+        # Ask to click color picker's close button
+        print("5. Click where the color picker's close button is located.")
+        self.closeCord = self.get_left_click_point()
+        print(self.closeCord)
         playsound.playsound("audio/ypop.wav")
-    
-    def set_input_area(self):
-        self.inputCord = list(pyautogui.position())
-        print("Input Text Area: ", self.inputCord)
-        playsound.playsound("audio/ypop.wav")
-    
-    def set_close_button(self):
-        self.closeCord = list(pyautogui.position())
-        print("Close Button: ", self.closeCord)
-        playsound.playsound("audio/ypop.wav")
+
+        self.save_and_exit(on_finish)
     
     def save_and_exit(self, on_finish: callable = None):
         if not(self.is_config_valid()):
