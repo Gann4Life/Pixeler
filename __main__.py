@@ -126,7 +126,9 @@ class PixelerApp:
         print("Drawing started...")
         self.stopped = False
 
-        palette = set(self.image_pixels.get_pixels())
+        # Draw colors in aplhabetical order cuz why not (prioritizes darker colors I think OwO)
+        palette = sorted(set(self.image_pixels.get_pixels()))
+
         for c in palette:
             self.pixelIndex = 0
 
