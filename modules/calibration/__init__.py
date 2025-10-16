@@ -62,7 +62,7 @@ class ScreenCalibration:
                 "Step 3: Color picker position": self.step3,
                 "Step 4: Color picker's hex input field": self.step4,
                 "Step 5: Color picker's close button": self.step5,
-                "Save": self.save_config,
+                "Save": self.safe_save,
                 "Exit": leave
             }
 
@@ -148,6 +148,14 @@ class ScreenCalibration:
             f_sleep_time = frame_time * 1.2
 
             return f_sleep_time
+
+    def safe_save(self):
+        '''Saves settings only if the values provided are valid. Returns False if it fails.'''
+        if not(self.is_config_valid()):
+            print("Please configure everything before saving!")
+            playsound("audio/error.mp3")
+            return False  # Indicate failure
+        self.save_config()
 
     def save_config(self, filepath='config.json'):
         playsound("audio/ding.mp3", False)
