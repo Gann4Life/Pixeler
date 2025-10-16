@@ -38,7 +38,7 @@ class PixelerGUI:
         self.btnLoadClipboard = Button(self.root, text="📋", command=self.laod_clipboard, foreground='white', background='black', font=FONT)
         self.btnLoadClipboard.grid(column=4, row=0)
 
-        self.lblActivityInfo = Label(self.root, text="| Calibrate | Draw | Load File | Load Clipboard |", foreground='white', background='black', font=FONT)
+        self.lblActivityInfo = Label(self.root, text="| Close | Calibrate | Draw | Load File | Load Clipboard |", foreground='white', background='black', font=FONT)
         self.lblActivityInfo.grid(column=5, row=0)
 
     def calibrate(self):
@@ -52,7 +52,7 @@ class PixelerGUI:
         threading.Thread(target=self.app.begin_drawing, daemon=True).start()
 
     def reset(self):
-        self.lblActivityInfo.configure(text="| Calibrate | Draw | Load File | Load Clipboard |")
+        self.lblActivityInfo.configure(text="| Close | Calibrate | Draw | Load File | Load Clipboard |")
         self.btnDraw.grid()
         self.btnCalibrate.grid()
 
