@@ -125,3 +125,60 @@ def test_cell_center_and_validity():
     m.fps = 60
     m.colorCord, m.inputCord, m.closeCord = [1, 1], [2, 2], [3, 3]
     assert m.is_config_valid()
+
+
+# ---- draw orders -------------------------------------------------------------------------
+def _shape_image():
+    '''Blue background, a red 10x10 square and a green blob (two parts).'''
+    img = Image.new('RGBA', (GRID, GRID), (0, 0, 255, 255))
+    img.paste((255, 0, 0, 255), (4, 4, 14, 14))
+    img.paste((0, 255, 0, 255), (20, 20, 26, 26))
+    img.paste((0, 255, 0, 255), (28, 2, 31, 6))
+    img.paste((0, 0, 0, 0), (0, 28, 8, 32))          # a transparent corner
+    return img
+
+
+def test_every_method_is_a_permutation_with_grouped_colors():
+    from core.order import method_keys
+    img = _shape_image()
+    reference = build_plan(img)
+    for method in method_keys():
+        steps = build_plan(img, method, seed=7)
+        assert [s.index for s in steps] == list(range(len(reference)))
+        assert sorted((s.color, s.gx, s.gy) for s in steps) == sorted((s.color, s.gx, s.gy) for s in reference)
+        assert color_boundaries(steps) == color_boundaries(reference)      # colors stay contiguous, same order
+
+
+def test_horizontal_is_legacy_and_scan_orders():
+    img = _shape_image()
+    assert build_plan(img, "horizontal") == build_plan(img)
+    red = [(s.gx, s.gy) for s in build_plan(img, "vertical") if s.color == "#ff0000"]
+    assert red[:3] == [(4, 4), (4, 5), (4, 6)]
+    red = [(s.gx, s.gy) for s in build_plan(img, "diagonal") if s.color == "#ff0000"]
+    assert red[:3] == [(4, 4), (5, 4), (4, 5)]
+    blue = [(s.gx, s.gy) for s in build_plan(img, "spiral") if s.color == "#0000ff"]
+    assert blue[:GRID] == [(x, 0) for x in range(GRID)] and blue[GRID] == (GRID - 1, 1)
+
+
+def test_trace_draws_outline_before_inside():
+    img = _shape_image()
+    red = [(s.gx, s.gy) for s in build_plan(img, "trace") if s.color == "#ff0000"]
+    outline = {(x, y) for (x, y) in red if x in (4, 13) or y in (4, 13)}
+    assert set(red[:len(outline)]) == outline
+    assert red[0] == (4, 4)
+    # consecutive outline cells are neighbours (it walks the border, no hopping)
+    for a, b in zip(red, red[1:len(outline)]):
+        assert max(abs(a[0] - b[0]), abs(a[1] - b[1])) == 1
+    green = [(s.gx, s.gy) for s in build_plan(img, "trace") if s.color == "#00ff00"]
+    assert green[0][0] < 28           # biggest blob first
+
+
+def test_maze_is_seeded_and_walks_neighbours():
+    img = _shape_image()
+    a = build_plan(img, "maze", seed=3)
+    assert a == build_plan(img, "maze", seed=3)
+    assert a != build_plan(img, "maze", seed=4)
+    red = [(s.gx, s.gy) for s in a if s.color == "#ff0000"]
+    adjacent = sum(1 for p, q in zip(red, red[1:]) if abs(p[0] - q[0]) + abs(p[1] - q[1]) == 1)
+    assert adjacent >= 0.7 * (len(red) - 1)      # mostly a continuous path, some backtracking hops
+    assert build_plan(img, "scatter", seed=1) != build_plan(img, "scatter", seed=2)

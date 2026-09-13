@@ -2,6 +2,7 @@
 processed output + draw plan, the Drawer, hotkeys and persisted state.
 Panels only talk to this object.'''
 import os
+import random
 
 from PIL import Image, ImageGrab, UnidentifiedImageError
 from PySide6.QtCore import QObject, Signal, Qt
@@ -12,6 +13,7 @@ from core.audio import Audio
 from core.calibration import CalibrationModel
 from core.drawer import Drawer, IDLE, RUNNING
 from core.hotkeys import HotkeyManager
+from core.order import method_keys
 from core.pipeline import NormRect, Adjustments, process, to_rgba
 from core.plan import build_plan
 from core.state import UiState
@@ -26,6 +28,8 @@ class PixelerApp(QObject):
     adjustments_changed = Signal(object)     # Adjustments
     status = Signal(str, bool)               # message, is_error
     panels_toggled = Signal(bool)
+    scrubbing = Signal(bool)                 # True while the timeline is being click-dragged
+    draw_method_changed = Signal(str, int)   # method key, seed
 
     def __init__(self):
         super().__init__()
@@ -49,6 +53,8 @@ class PixelerApp(QObject):
         self.adjustments = self.state.adjustments
         self.output = None
         self.steps = []
+        self.draw_method = self.state.draw_method
+        self.draw_seed = self.state.draw_seed
         self.panels = []     # set by __main__
 
     # ---- lifecycle ---------------------------------------------------------------------------
@@ -134,9 +140,25 @@ class PixelerApp(QObject):
             self.output, self.steps = None, []
         else:
             self.output = process(self.source, self.crop, self.adjustments)
-            self.steps = build_plan(self.output)
+            self.steps = build_plan(self.output, self.draw_method, self.draw_seed)
         self.drawer.set_steps(self.steps)
         self.output_changed.emit(self.output, self.steps)
+
+    # ---- draw order ---------------------------------------------------------------------------
+    def set_draw_method(self, method: str, seed: int = None):
+        if method not in method_keys():
+            return
+        self.draw_method = method
+        if seed is not None:
+            self.draw_seed = int(seed)
+        self.state.draw_method, self.state.draw_seed = self.draw_method, self.draw_seed
+        self.draw_method_changed.emit(self.draw_method, self.draw_seed)
+        self.rebuild()
+        self.state.save()
+
+    def reroll_seed(self):
+        '''New random seed for the randomized orders (maze, scatter).'''
+        self.set_draw_method(self.draw_method, random.randrange(1, 1_000_000))
 
     # ---- transport ----------------------------------------------------------------------------
     def play_pause(self):

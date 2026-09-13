@@ -66,8 +66,16 @@ make sense right now.
 * Preview of the processed 32×32 result.
 * Palette limit, dither, brightness, contrast, saturation, gamma and alpha
   cutoff — every change updates the preview instantly.
+* **Draw order** — how the pixels of each color are sequenced (colors are
+  always drawn one after another, since switching costs a color picker trip):
+  *Horizontal* / *Vertical* (printer scans), *Diagonal*, *Spiral* (outer ring
+  inwards), *Trace* (outline of each shape first, then the inside, like a
+  robot tracing), *Maze* (starts at a random cell and carves a winding path,
+  backtracking when stuck) and *Scatter* (random). 🎲 rerolls the random ones.
+  Scrub the timeline to watch any order play out in the preview.
 * **Show final result** on: preview the finished picture. Off: only the pixels
-  placed so far are shown, following the timeline.
+  placed so far are shown, following the timeline. Click-dragging the timeline
+  always previews the progress, whatever the toggle says.
 * The status line shows how many colors (= color picker trips), steps and
   roughly how long the drawing will take.
 

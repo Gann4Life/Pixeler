@@ -3,6 +3,7 @@ crop, adjustments, hotkey bindings and the output preview toggle.'''
 import json
 import os
 
+from .order import DEFAULT_METHOD, method_keys
 from .pipeline import NormRect, Adjustments
 
 STATE_FILENAME = 'ui_state.json'
@@ -23,6 +24,8 @@ class UiState:
         self.hotkeys = {}
         self.output_shows_final = True
         self.start_delay = 1.5       # seconds between "all keys released" and the first click
+        self.draw_method = DEFAULT_METHOD
+        self.draw_seed = 0           # for the randomized draw orders (maze, scatter)
         self.last_image_dir = ""
 
     def panel(self, name: str) -> dict:
@@ -36,6 +39,8 @@ class UiState:
             "hotkeys": self.hotkeys,
             "output_shows_final": self.output_shows_final,
             "start_delay": self.start_delay,
+            "draw_method": self.draw_method,
+            "draw_seed": self.draw_seed,
             "last_image_dir": self.last_image_dir,
         }
 
@@ -50,6 +55,11 @@ class UiState:
             self.start_delay = max(0.0, float(d.get("start_delay", 1.5)))
         except (TypeError, ValueError):
             self.start_delay = 1.5
+        self.draw_method = d.get("draw_method") if d.get("draw_method") in method_keys() else DEFAULT_METHOD
+        try:
+            self.draw_seed = int(d.get("draw_seed", 0))
+        except (TypeError, ValueError):
+            self.draw_seed = 0
         self.last_image_dir = d.get("last_image_dir", "") or ""
 
     def load(self) -> bool:

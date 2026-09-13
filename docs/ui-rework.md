@@ -59,6 +59,10 @@ ui/
 * Nearest-neighbour preview of the processed 32×32 image.
 * Adjustments: palette limit, dither, brightness, contrast, saturation, gamma,
   alpha threshold. Every change re-runs the pipeline live.
+* **Draw order** (`core/order.py`): per-color sequencing — horizontal, vertical,
+  diagonal, spiral, trace (outline → fill per connected shape, biggest first),
+  maze (seeded randomized DFS with a straight bias), scatter. Persisted with
+  its seed in `ui_state.json`; 🎲 rerolls.
 * **Show final result**: on = final image; off = pixels appear one by one as
   the timeline advances (same filters applied).
 * Stats: colors (= color picker operations), steps, estimated time.

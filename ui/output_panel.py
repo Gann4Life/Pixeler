@@ -3,10 +3,11 @@ adjustment properties below, and a stats line.'''
 from PySide6.QtCore import Qt, QRectF, QTimer, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen
 from PySide6.QtWidgets import (QWidget, QFormLayout, QLabel, QSlider, QCheckBox, QComboBox,
-                               QPushButton, QHBoxLayout, QSizePolicy, QScrollArea, QSplitter,
-                               QSplitterHandle)
+                               QPushButton, QToolButton, QHBoxLayout, QSizePolicy, QScrollArea,
+                               QSplitter, QSplitterHandle)
 
 from core.drawer import RUNNING
+from core.order import METHODS, is_random
 from core.pipeline import Adjustments
 from core.plan import render_progress, color_boundaries, estimate_seconds
 from .app import PixelerApp
@@ -119,6 +120,7 @@ class OutputPanel(FloatingPanel):
         self.app = app
         self._syncing = False
         self._index = 0
+        self._scrubbing = False
 
         self.preview = PreviewWidget()
         self.preview.setToolTip("Processed result (what will be drawn)")
@@ -172,9 +174,26 @@ class OutputPanel(FloatingPanel):
         self.reset_button = QPushButton("Reset adjustments")
         form.addRow("", self.reset_button)
 
+        # ---- draw order (how the pixels of each color are sequenced)
+        self.method = QComboBox()
+        for key, label, desc in METHODS:
+            self.method.addItem(label, key)
+            self.method.setItemData(self.method.count() - 1, desc, Qt.ToolTipRole)
+        self.reroll_button = QToolButton()
+        self.reroll_button.setText("🎲")
+        self.reroll_button.setFixedSize(30, 24)
+        self.reroll_button.setStyleSheet('font-family: "Segoe UI Symbol", "Segoe UI Emoji"; font-size: 14px;')
+        self.reroll_button.setToolTip("New random seed for the Maze / Scatter orders")
+        mrow = QHBoxLayout()
+        mrow.setSpacing(4)
+        mrow.addWidget(self.method, 1)
+        mrow.addWidget(self.reroll_button)
+        form.addRow("Draw order", mrow)
+
         self.final_toggle = QCheckBox("Show final result")
         self.final_toggle.setToolTip("On: preview the finished image.\n"
-                                     "Off: preview only the pixels placed so far (follows the timeline).")
+                                     "Off: preview only the pixels placed so far (follows the timeline).\n"
+                                     "Click-dragging the timeline always previews the progress.")
         form.addRow("", self.final_toggle)
 
         self.grid_toggle = QCheckBox("Show pixel grid")
@@ -212,6 +231,11 @@ class OutputPanel(FloatingPanel):
         self.reset_button.clicked.connect(lambda: app.set_adjustments(Adjustments()))
         self.final_toggle.toggled.connect(self._on_final_toggled)
         self.grid_toggle.toggled.connect(self._on_grid_toggled)
+        self._load_method(app.draw_method, app.draw_seed)
+        self.method.currentIndexChanged.connect(self._on_method_changed)
+        self.reroll_button.clicked.connect(app.reroll_seed)
+        app.draw_method_changed.connect(self._load_method)
+        app.scrubbing.connect(self._on_scrubbing)
 
         app.output_changed.connect(self._on_output)
         app.adjustments_changed.connect(self._load_adjustments)
@@ -280,7 +304,27 @@ class OutputPanel(FloatingPanel):
         self.alpha_label.setText(str(self.alpha.value()))
         self.app.set_adjustments(adj)
 
+    # ---- draw order --------------------------------------------------------------------------------
+    def _load_method(self, method: str, seed: int):
+        self._syncing = True
+        idx = self.method.findData(method)
+        self.method.setCurrentIndex(idx if idx >= 0 else 0)
+        self.method.setToolTip(self.method.itemData(self.method.currentIndex(), Qt.ToolTipRole) or "")
+        self.reroll_button.setEnabled(is_random(method))
+        self._syncing = False
+
+    def _on_method_changed(self, *_):
+        if not self._syncing:
+            self.app.set_draw_method(self.method.currentData())
+
     # ---- preview ----------------------------------------------------------------------------------
+    def _follows_timeline(self) -> bool:
+        return self._scrubbing or not self.final_toggle.isChecked()
+
+    def _on_scrubbing(self, active: bool):
+        self._scrubbing = active
+        self._render_timer.start()
+
     def _on_output(self, img, steps):
         self._index = min(self._index, len(steps))
         self._render_timer.start()
@@ -294,12 +338,12 @@ class OutputPanel(FloatingPanel):
 
     def _on_progress(self, index: int):
         self._index = index
-        if not self.final_toggle.isChecked():
+        if self._follows_timeline():
             self._render_timer.start()
 
     def _render(self):
         img = self.app.output
-        if img is not None and not self.final_toggle.isChecked():
+        if img is not None and self._follows_timeline():
             img = render_progress(img, self.app.steps, self._index)
         self.preview.set_image(img)
 

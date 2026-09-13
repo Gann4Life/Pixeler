@@ -33,6 +33,7 @@ class InputPanel(FloatingPanel):
         self.timeline.setToolTip("Timeline — drag to scrub; Play resumes from here.\n"
                                  "Crop/adjustment edits while paused rebuild the plan and clamp this position.")
         self.timeline.sliderPressed.connect(self._on_scrub_start)
+        self.timeline.sliderReleased.connect(lambda: app.scrubbing.emit(False))
         self.timeline.valueChanged.connect(self._on_timeline_value)
         self.timeline_label = QLabel("0 / 0")
         self.timeline_label.setStyleSheet("font-size: 11px; color: #a0a3a8;")
@@ -118,6 +119,7 @@ class InputPanel(FloatingPanel):
     def _on_scrub_start(self):
         if self.app.drawer.state == RUNNING:
             self.app.drawer.pause()
+        self.app.scrubbing.emit(True)
 
     def _on_timeline_value(self, value: int):
         if self._syncing:

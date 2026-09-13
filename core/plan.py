@@ -1,11 +1,16 @@
 '''Turns the processed GRID x GRID image into an ordered list of draw steps.
 
-Order matches the original draw loop: colors sorted by hex string, and within
-a color row-major (top-left to bottom-right). Transparent pixels are skipped.
+Colors are sorted by hex string (each color is picked once); the order of the
+cells inside a color is chosen by a draw-order algorithm (core.order). The
+default "horizontal" matches the original draw loop. Transparent pixels are
+skipped.
 '''
+import random
 from dataclasses import dataclass
 
 from PIL import Image
+
+from .order import order_cells, DEFAULT_METHOD
 
 
 @dataclass(frozen=True)
@@ -20,10 +25,11 @@ def hex_of(r: int, g: int, b: int) -> str:
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
 
-def build_plan(img: Image.Image) -> list:
+def build_plan(img: Image.Image, method: str = DEFAULT_METHOD, seed: int = 0) -> list:
     '''img must be RGBA with binary alpha (see pipeline.process).'''
     if img is None:
         return []
+    rng = random.Random(seed)
     px = img.load()
     by_color = {}
     for y in range(img.height):
@@ -35,7 +41,7 @@ def build_plan(img: Image.Image) -> list:
 
     steps = []
     for color in sorted(by_color):
-        for (x, y) in by_color[color]:
+        for (x, y) in order_cells(method, by_color[color], max(img.width, img.height), rng):
             steps.append(DrawStep(len(steps), color, x, y))
     return steps
 
