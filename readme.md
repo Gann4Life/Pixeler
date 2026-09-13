@@ -1,92 +1,108 @@
-# Pixeler Tutorial (Install - Use)
+# Pixeler
 
-_This is the detailed tutorial, so follow it carefully and if something goes wrong check this tutorial again._
+Draws pixel art for you in Roblox *Starving Artists*: load an image, crop and
+tweak it in two small floating panels that stay on top of the game, press
+Play, and Pixeler clicks every pixel on the 32×32 canvas.
 
-## Prequisites
-* Python 3.10, download it from [Here](https://www.python.org/downloads/) and make sure to add it to your path.
+## Prerequisites
 
-Or by using winget:
+* Python 3.10, from [python.org](https://www.python.org/downloads/) (tick *Add to PATH*), or:
+
 ```powershell
 winget install --id Python.Python.3.10
 ```
-> How to use winget? *Open a PowerShell console and paste that command.*
 
-## Installation
+## Install
 
-Downlaod .Zip file from GitHub, or from [Here](https://github.com/Gann4Life/Pixeler/archive/refs/heads/main.zip)
-and extract it.
-
-![image](https://github.com/user-attachments/assets/dfa8a6cc-aacb-4654-bb25-e0814613261d)
-
-Or if you already have [Git](https://git-scm.com/downloads) installed, use this command in terminal:
+Download the [zip](https://github.com/Gann4Life/Pixeler/archive/refs/heads/main.zip) and extract it, or:
 
 ```bash
 git clone https://github.com/Gann4Life/Pixeler
 ```
 
-> Don't have git? Install it with winget `winget install --id Git.Git` :3
+Run `start.bat`. The first run creates a virtual environment in `.venv` and
+installs the requirements (PySide6, Pillow, keyboard, PyAutoIt, playsound);
+afterwards it just starts the app.
 
-## Setup
-Run `start.bat` to start the program, it will set up a virtual environmennt located at `.\.venv` and install required packages in it, this will happen only once.
-Once it finishes, the program will start.
+Roblox must run **windowed or borderless** (not exclusive fullscreen) so the
+panels can stay on top of it.
 
-### Calibration
+## The panels
 
-When you go into calibration mode, you will see this:
+Both panels are frameless, always on top, draggable by their title bar and
+resizable from any edge or corner. **⋮** opens per-panel options (opacity,
+always-on-top, reset position, show the other panel, hide this panel, quit).
+**✕** quits Pixeler. `Ctrl+Shift+H` hides/shows both panels. Both panels are
+always shown on startup. Positions, sizes and opacity are remembered in
+`ui_state.json`.
 
-![image2](https://github.com/user-attachments/assets/ed3d4082-b066-4a11-8ac2-a41446e1d77e)
+### Input
 
-Go into Starving Artists game and open Drawing Panel.
+* Shows the source image. Drag the handles to crop; **Shift** keeps the
+  aspect ratio, **Alt** resizes symmetrically; drag inside to move; drag on
+  the empty area to start a new crop. **⟲ crop** resets to the whole image.
+  Mouse wheel zooms, middle/right-drag pans, middle double-click (or `0`)
+  fits the image again.
+  The crop is kept when you load another image. The canvas is square, so the
+  centered square of your selection is what gets drawn (dashed outline) — the
+  image is never stretched.
+* **▶ / ⏸** play or pause, **⏹** stop. **📁** load a file, **📋** paste from the
+  clipboard.
+* The timeline slider scrubs through every pixel that will be drawn. Pause,
+  drag it anywhere, press Play — drawing resumes from there.
+* **⚙** opens Settings (FPS, hotkeys, calibration).
 
-By pressing `F` Key, you will add your current mouse position as one of the pixels from drawing panel in Starving Artists.
-One by one, You have to point your mouse to pixel on the grid and hit `F`, after you hear a _pop_ sound, move on to the next.
+### Output
 
-Here is how you should do it:
+* Preview of the processed 32×32 result.
+* Palette limit, dither, brightness, contrast, saturation, gamma and alpha
+  cutoff — every change updates the preview instantly.
+* **Show final result** on: preview the finished picture. Off: only the pixels
+  placed so far are shown, following the timeline.
+* The status line shows how many colors (= color picker trips), steps and
+  roughly how long the drawing will take.
 
-![RobloxScreenShot20240809_024936282](https://github.com/user-attachments/assets/fa5e4cdf-57aa-4f1d-b2b6-a18777138f51)
+## Hotkeys
 
-**First** you go from Left to Right adding all 32 pixels on the list.
+Global — they work while Roblox has focus — and built on `Ctrl+Shift` so they
+never type into chat, on keys Roblox ignores (Space would make your avatar
+jump, I/O zoom the camera). All rebindable in **⚙ Settings**, which warns if
+you pick a key the game reacts to.
 
-**Then** you go from Top to Bottom adding all 32 pixels on the list.
+| Action | Default |
+|---|---|
+| Play / Pause | `Ctrl+Shift+P` |
+| Stop | `Ctrl+Shift+X` |
+| Load image file | `Ctrl+Shift+L` |
+| Load from clipboard | `Ctrl+Shift+V` |
+| Reset crop | `Ctrl+Shift+R` |
+| Show / hide panels | `Ctrl+Shift+H` |
 
-_If you listen carefully, while adding pixels, Horizontal and Vertical pixels have different sound effects_
+## Calibration
 
-When you're done you should hear _ding_ sound.
+Open the drawing panel in Starving Artists, then **⚙ → Calibrate**. A
+translucent overlay covers the screen:
 
-After that, By pressing `T` Key, add Color Selector Button do the list.
+1. Drag a square over the game's canvas. It is always square and shows a red
+   dot where every one of the 32×32 pixels will be clicked. Fine-tune it with
+   the corner/edge handles, drag it to move it, or nudge with the arrow keys
+   (Shift = 10 px).
+2. Drag the three crosshair markers onto the **color button**, its **hex
+   input** field and its **close button**.
+3. **Test** moves the mouse over the corners and the markers so you can check
+   them; **Save** (Enter) writes `config.json`. Esc cancels.
 
-![RobloxScreeddnShot20240809_024936282](https://github.com/user-attachments/assets/04bb4299-355e-4d8b-a969-a38b968626d9)
+Set your average Roblox FPS in Settings (Shift+F5 in Roblox shows it) — inputs
+are spaced to about 1.2 frames so the game registers every click.
 
-By pressing `Y` Key, add Input area to the list.
+An old `config.json` from the click-64-pixels era is migrated automatically;
+the overlay opens pre-filled so you only need to adjust.
 
-![imag3e](https://github.com/user-attachments/assets/21321ce9-c9a8-400e-814a-4ef97cb85c89)
+## Development
 
-By pressing `U` Key, add Close Button to the list.
+```
+.venv\Scripts\python.exe -m pytest tests
+```
 
-![imag2e](https://github.com/user-attachments/assets/da16f7f1-3e3b-4bb9-8f13-6490fc837bc0)
-
-Now when you're done, press `G` to save changes into config.json. You should see something like This:
-
-![imag4e](https://github.com/user-attachments/assets/51a62b1c-bdd0-4d77-bbb8-b99dad6f3087)
-
-Once you left calibration mode and changes were saved, move to the second option `Begin Drawing`.
-
-### Draw Mode
-
-![ima5ge](https://github.com/user-attachments/assets/f3ad7c57-15e9-4845-a4e0-d7ef9a74e4bc)
-
-Enter your average Roblox FPS there and hit enter. (this is to make sure that program functions based on your pc's capabilities)
-
-After This pops up you're ready to go
-
-![imag11e](https://github.com/user-attachments/assets/f33ed3c7-2ec8-4fe2-bea0-935515b5fe72)
-
-Press `H` to Select Image you want to draw
-
-Press `F` to Start Drawing
-
-Press `G` to Stop Drawing.
-
-For now, whenever you go into draw mode you will always have to load a new image so please use carefully.
-
-## Enjoy!
+Design notes: [docs/ui-rework.md](docs/ui-rework.md),
+[docs/calibration-overlay.md](docs/calibration-overlay.md).

@@ -1,166 +1,89 @@
-import keyboard
-import time
-import threading
-from tkinter import *
-from tkinter.font import Font
+'''Pixeler entry point: two floating panels (Input / Output) that stay on top of
+the game, global hotkeys, and the calibration overlay. See docs/ui-rework.md.'''
+import os
+import sys
 
-from modules.resources import Audio
-from modules.calibration import ScreenCalibration
-from modules.image_process import PixelExtractor
-from modules.input_control import ColorPicker, PencilTool
+# Qt must report physical pixels so its coordinates match what autoit clicks.
+os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
+os.environ.setdefault("QT_SCALE_FACTOR", "1")
 
-class PixelerGUI:
-    def __init__(self, root : Tk, app):
-        self.app = app
-        app.set_gui(self)
+# Run from the repo folder regardless of the caller's cwd (config.json, resources/, ui_state.json).
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.getcwd())
 
-        FONT =  Font(size=20)
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
-        self.root = root
-        self.root.state("zoomed")
-        self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
-        self.root.attributes("-transparentcolor", "blue")
-        self.root.configure(bg="blue")
+from ui.app import PixelerApp  # noqa: E402
+from ui.input_panel import InputPanel  # noqa: E402
+from ui.output_panel import OutputPanel  # noqa: E402
+from ui.settings_dialog import SettingsDialog  # noqa: E402
+from ui.calibration_overlay import CalibrationOverlay  # noqa: E402
 
-        self.btnClose = Button(self.root, text="❌", command=exit, foreground='white', background='black', font=FONT)
-        self.btnClose.grid(column=0, row=0)
 
-        self.btnCalibrate = Button(self.root, text="⚙", command=self.calibrate, foreground='white', background='black', font=FONT)
-        self.btnCalibrate.grid(column=1, row=0)
+def main():
+    qapp = QApplication(sys.argv)
+    qapp.setApplicationName("Pixeler")
+    qapp.setQuitOnLastWindowClosed(False)   # hiding both panels must not quit; ⋮ → Quit does
 
-        self.btnDraw = Button(self.root, text=f"✏", command=self.draw, foreground='white', background='black', font=FONT)
-        self.btnDraw.grid(column=2, row=0)
+    app = PixelerApp()
+    input_panel = InputPanel(app)
+    output_panel = OutputPanel(app)
+    app.panels = [input_panel, output_panel]
 
-        self.btnLoadFile = Button(self.root, text="📁", command=self.load_file, foreground='white', background='black', font=FONT)
-        self.btnLoadFile.grid(column=3, row=0)
+    overlay = {"w": None}
 
-        self.btnLoadClipboard = Button(self.root, text="📋", command=self.laod_clipboard, foreground='white', background='black', font=FONT)
-        self.btnLoadClipboard.grid(column=4, row=0)
-
-        self.lblActivityInfo = Label(self.root, text="| Close | Calibrate | Draw | Load File | Load Clipboard |", foreground='white', background='black', font=FONT)
-        self.lblActivityInfo.grid(column=5, row=0)
-
-    def calibrate(self):
-        self.display_message('[ CALIBRATION MODE ] Please check the console for a step by step guide.')
-        self.btnCalibrate.grid_remove()
-        threading.Thread(target=self.app.calibrate, daemon=True).start()
-
-    def draw(self):
-        self.display_message("[ DRAW MODE ] Press F to start drawing and toggle pause, press G to stop completely.")
-        self.btnDraw.grid_remove()
-        threading.Thread(target=self.app.begin_drawing, daemon=True).start()
-
-    def reset(self):
-        self.lblActivityInfo.configure(text="| Close | Calibrate | Draw | Load File | Load Clipboard |", foreground='white', background='black')
-        self.btnDraw.grid()
-        self.btnCalibrate.grid()
-
-    def load_file(self):
-        self.app.image_pixels.load_image_file()
-
-    def laod_clipboard(self):
-        self.app.image_pixels.load_image_clipboard()
-
-    def display_message(self, message : str) -> None:
-        self.lblActivityInfo.configure(text=message)
-
-    def display_error(self, message : str) -> None:
-        self.lblActivityInfo.configure(text=f"ERROR: {message}", foreground='red')
-
-class PixelerApp:
-    def __init__(self):
-        self.pixelIndex = 0
-        
-        self.paused = True
-        self.stopped = False
-
-        self.image_pixels = PixelExtractor()
-        self.settings = ScreenCalibration()
-        self.settings.load_config()
-        self.color_picker = ColorPicker(self.settings)
-        self.pencil = PencilTool(self.settings, self.color_picker)
-
-    #     self.main_menu()
-    def set_gui(self, gui : PixelerGUI):
-        self.gui = gui
-
-    def main_menu(self):
-        self.gui.reset()
-
-    def calibrate(self):
-        self.settings.run()
-        self.main_menu()
-
-    def begin_drawing(self):
-        # Warn user if coordinates are not set properly
-        if not(self.settings.is_config_valid()):
-            print("Error: Please calibrate the screen first to set all necessary coordinates.")
-            Audio.play_error()
-            self.main_menu()
+    def open_calibration():
+        if overlay["w"] is not None:
             return
+        app.hotkeys.enabled = False
+        for p in app.panels:
+            p.hide()
+        w = CalibrationOverlay(app.calibration, app.pencil)
+        overlay["w"] = w
 
-        print("Press F To Start Drawing")
-        print("Press G To Stop and Return to Menu")
-        
-        draw_process = threading.Thread(target=self.draw_loop, daemon=True)
-        draw_process.start()
+        def done():
+            overlay["w"] = None
+            app.hotkeys.enabled = True
+            for p in app.panels:
+                p.show()
+            app.rebuild()   # stats/ETA depend on fps
+        w.closed.connect(done)
+        w.show()
+        w.activateWindow()
+        w.setFocus()
 
-        def toggle_pause():
-            self.paused = not(self.paused)
-            if self.paused:
-                print("Paused! Press F to resume.")
-            else:
-                print("Resuming...")    
+    def open_settings():
+        dlg = SettingsDialog(app, input_panel)
+        dlg.calibrate_requested.connect(lambda: (dlg.reject(), open_calibration()))
+        dlg.exec()
+        input_panel.refresh_tooltips()
+        app.rebuild()
 
-        keyboard.on_press_key('f', lambda _: toggle_pause())
-        keyboard.wait('g')
+    input_panel.open_settings = open_settings
 
-        self.stop()
+    def quit_app():
+        app.shutdown()
+        qapp.quit()
+    input_panel.quit_requested.connect(quit_app)
+    output_panel.quit_requested.connect(quit_app)
+    qapp.aboutToQuit.connect(app.shutdown)
 
-    def draw_loop(self):
-        if self.image_pixels.image is None:
-            self.gui.display_error("Please load an image first.")
-            self.gui.btnDraw.grid()
-            Audio.play_error()
-            return
+    # Each panel's ⋮ menu can bring the other one back if it was hidden.
+    for p, other in ((input_panel, output_panel), (output_panel, input_panel)):
+        p.add_menu_action(f"Show {other.title_label.text()} panel", other.show)
 
-        print("Drawing started...")
-        self.stopped = False
+    # Always start with both panels visible; only geometry/opacity persist.
+    for p in app.panels:
+        p.show()
 
-        # Draw colors in aplhabetical order cuz why not (prioritizes darker colors I think OwO)
-        palette = sorted(set(self.image_pixels.get_pixels()))
+    app.start()
+    app.rebuild()
+    if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):   # `python . image.png`
+        app.load_file(sys.argv[1])
+    if not app.calibration.is_config_valid():
+        app.status.emit("Not calibrated yet — open ⚙ to calibrate.", True)
+    sys.exit(qapp.exec())
 
-        for c in palette:
-            if c == PixelExtractor.TRANSPARENT_COLOR: continue
-            self.pixelIndex = 0
-
-            for y in range(len(self.settings.y)):
-                for x in range(len(self.settings.x)):
-                    if self.stopped: return
-                    while self.paused:
-                        if self.stopped: return
-                        time.sleep(0.1)
-                    
-                    current_color = self.image_pixels.get_color_at(x, y)
-                    if current_color != c: continue
-
-                    #self.color_picker.pick(c)
-                    self.pencil.draw_color_at(c, self.settings.x[x], self.settings.y[y])
-                    self.pixelIndex += 1
-        print("Drawing complete!")
-        Audio.play_ding()
-
-    def stop(self):
-        print("\nStopping... Returning to main menu.")
-        self.pixelIndex = 0  # Reset progress
-        self.paused = True
-        self.stopped = True
-        keyboard.unhook_all()  # Clean up all keyboard listeners
-        self.main_menu()
 
 if __name__ == "__main__":
-    app = PixelerApp()
-    root = Tk()
-    gui = PixelerGUI(root, app)
-    root.mainloop()
+    main()
