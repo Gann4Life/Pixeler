@@ -1,8 +1,9 @@
 '''Settings: framerate, hotkey bindings, and the entry point to calibration.'''
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QGroupBox, QSpinBox, QDoubleSpinBox,
-                               QLabel, QPushButton, QHBoxLayout, QDialogButtonBox)
+                               QLabel, QPushButton, QHBoxLayout, QDialogButtonBox, QCheckBox)
 
+from core.actuator import PenSettings
 from core.hotkeys import ACTIONS, DEFAULTS, roblox_conflict
 from .app import PixelerApp
 from .floating_panel import STYLE
@@ -40,6 +41,37 @@ class SettingsDialog(QDialog):
         self.cal_button.clicked.connect(self._calibrate)
         cl.addWidget(self.cal_button)
         root.addWidget(cal)
+
+        # ---- pen
+        pen = app.state.pen
+        pg = QGroupBox("Pen")
+        pl = QFormLayout(pg)
+        self.hold_stroke = QCheckBox("Hold the button across neighbouring cells")
+        self.hold_stroke.setChecked(pen.hold_stroke)
+        self.hold_stroke.setToolTip("On: the pen stays down while the next cell touches the current one (any of the 8 "
+                                    "directions) and lifts before a jump or a color change — one frame per cell.\n"
+                                    "Off: every cell is clicked separately (the original behaviour).")
+        pl.addRow("", self.hold_stroke)
+        self.pen_delay = QDoubleSpinBox(minimum=0.0, maximum=2.0, singleStep=0.01, decimals=2, suffix=" s")
+        self.pen_delay.setValue(pen.pen_delay)
+        self.pen_delay.setToolTip("Extra wait after every pen down and pen up.")
+        pl.addRow("Pen up/down delay", self.pen_delay)
+        self.color_delay = QDoubleSpinBox(minimum=0.0, maximum=5.0, singleStep=0.05, decimals=2, suffix=" s")
+        self.color_delay.setValue(pen.color_delay)
+        self.color_delay.setToolTip("Extra wait after every color change, before the first cell of that color.")
+        pl.addRow("Color change delay", self.color_delay)
+        self.interpolate = QCheckBox("Interpolate movement (glide instead of teleport)")
+        self.interpolate.setChecked(pen.interpolate)
+        self.interpolate.setToolTip("Moves the cursor smoothly between cells. Looks natural, but a diagonal glide passes "
+                                    "the corner shared by four cells and the game may paint a stray neighbour.")
+        pl.addRow("", self.interpolate)
+        self.glide = QSpinBox(minimum=1, maximum=100)
+        self.glide.setValue(pen.glide)
+        self.glide.setToolTip("Glide speed: 1 = fastest, 100 = slowest (autoit's scale).")
+        self.glide.setEnabled(pen.interpolate)
+        self.interpolate.toggled.connect(self.glide.setEnabled)
+        pl.addRow("Glide speed", self.glide)
+        root.addWidget(pg)
 
         # ---- hotkeys
         hk = QGroupBox("Hotkeys (global — work while the game has focus)")
@@ -103,6 +135,13 @@ class SettingsDialog(QDialog):
     def accept(self):
         self._apply_fps()
         self.app.set_start_delay(self.start_delay.value())
+        self.app.set_pen(PenSettings(
+            hold_stroke=self.hold_stroke.isChecked(),
+            pen_delay=self.pen_delay.value(),
+            color_delay=self.color_delay.value(),
+            interpolate=self.interpolate.isChecked(),
+            glide=self.glide.value(),
+        ))
         failed = []
         for action, cap in self.captures.items():
             key = cap.key()

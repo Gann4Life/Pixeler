@@ -5,7 +5,7 @@ on every slider/crop change; at 32x32 that is essentially free.
 '''
 from dataclasses import dataclass, asdict, fields
 
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps
 
 from .calibration import GRID
 
@@ -74,6 +74,7 @@ class Adjustments:
     gamma: float = 1.0
     palette_limit: int = 0       # 0 = unlimited, else 2..256
     dither: bool = False
+    invert: bool = False         # negative of the picture (after the other adjustments)
     alpha_threshold: int = 1     # pixels with alpha below this are skipped (0 = draw everything)
 
     def to_dict(self) -> dict:
@@ -121,10 +122,16 @@ def process(source: Image.Image, crop: NormRect, adj: Adjustments, size: int = G
         lut = [round(255 * ((i / 255) ** inv)) for i in range(256)]
         rgb = rgb.point(lut * 3)
 
+    if adj.invert:
+        rgb = ImageOps.invert(rgb)
+
     if adj.palette_limit and adj.palette_limit > 0:
         colors = max(2, min(256, int(adj.palette_limit)))
-        dither = Image.Dither.FLOYDSTEINBERG if adj.dither else Image.Dither.NONE
-        rgb = rgb.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=dither).convert('RGB')
+        # Pillow ignores `dither` unless a palette is given, so: pick the palette, then map with it.
+        pal = rgb.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
+        if adj.dither:
+            pal = rgb.quantize(palette=pal, dither=Image.Dither.FLOYDSTEINBERG)
+        rgb = pal.convert('RGB')
 
     thr = max(0, min(255, int(adj.alpha_threshold)))
     alpha = alpha.point(lambda a: 255 if a >= thr else 0)

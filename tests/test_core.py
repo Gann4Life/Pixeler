@@ -182,3 +182,151 @@ def test_maze_is_seeded_and_walks_neighbours():
     adjacent = sum(1 for p, q in zip(red, red[1:]) if abs(p[0] - q[0]) + abs(p[1] - q[1]) == 1)
     assert adjacent >= 0.7 * (len(red) - 1)      # mostly a continuous path, some backtracking hops
     assert build_plan(img, "scatter", seed=1) != build_plan(img, "scatter", seed=2)
+
+
+# ---- pencil strokes ----------------------------------------------------------------------------
+class FakeAutoit:
+    def __init__(self):
+        self.log = []
+
+    def mouse_move(self, x, y, speed=0):
+        self.log.append(("move", x, y, speed))
+
+    def mouse_down(self, b="left"):
+        self.log.append(("down",))
+
+    def mouse_up(self, b="left"):
+        self.log.append(("up",))
+
+    def mouse_click(self, *a):
+        self.log.append(("click",))
+
+
+def _pencil(monkeypatch, **pen_kwargs):
+    import core.actuator as act
+    from core.plan import DrawStep
+    fake = FakeAutoit()
+    monkeypatch.setattr(act, "autoit", fake)
+    monkeypatch.setattr(act.time, "sleep", lambda *_: None)
+    m = CalibrationModel()
+    m.area, m.fps = (0.0, 0.0, 320.0), 60
+    m.colorCord, m.inputCord, m.closeCord = [1, 1], [2, 2], [3, 3]
+    picker = act.ColorPicker(m)
+    monkeypatch.setattr(picker, "pick", lambda color: (fake.log.append(("pick", color)),
+                                                        setattr(picker, "current_color", color)))
+    pencil = act.PencilTool(m, picker, act.PenSettings(**pen_kwargs))
+    return pencil, fake, DrawStep
+
+
+def test_pen_holds_across_neighbours_and_lifts_on_jumps_and_colors(monkeypatch):
+    pencil, fake, DrawStep = _pencil(monkeypatch)
+    steps = [DrawStep(0, "#ff0000", 0, 0), DrawStep(1, "#ff0000", 1, 1), DrawStep(2, "#ff0000", 1, 2),
+             DrawStep(3, "#ff0000", 10, 2),                     # jump
+             DrawStep(4, "#00ff00", 10, 3)]                     # color change (adjacent, but must lift)
+    for s in steps:
+        pencil.draw_step(s)
+    pencil.pen_up()
+    kinds = [e[0] for e in fake.log]
+    assert kinds.count("down") == 3 and kinds.count("up") == 3 and "click" not in kinds
+    assert kinds.index("pick") < kinds.index("down")                     # color picked before the pen goes down
+    # order: pick red, down, (moves), up, down (jump), up, pick green, down, up
+    assert [k for k in kinds if k in ("pick", "down", "up")] == \
+        ["pick", "down", "up", "down", "up", "pick", "down", "up"]
+    assert all(e[3] == 0 for e in fake.log if e[0] == "move")           # teleport by default
+
+
+def test_pen_legacy_clicks_and_glide(monkeypatch):
+    pencil, fake, DrawStep = _pencil(monkeypatch, hold_stroke=False, interpolate=True, glide=7)
+    pencil.draw_step(DrawStep(0, "#ff0000", 0, 0))
+    pencil.draw_step(DrawStep(1, "#ff0000", 1, 0))
+    kinds = [e[0] for e in fake.log]
+    assert kinds.count("click") == 8 and "down" not in kinds
+    glides = [e for e in fake.log if e[0] == "move" and e[3] == 7]
+    assert len(glides) == 2 and glides[0][1:3] == (5, 5) and glides[1][1:3] == (15, 5)   # one glide per cell
+    pencil.pen_up()                                                    # nothing held: no-op
+    assert "up" not in [e[0] for e in fake.log]
+
+
+def test_stroke_eta_counts_strokes():
+    from core.actuator import PenSettings
+    from core.plan import stroke_breaks, estimate_seconds
+    img = _shape_image()
+    steps = build_plan(img, "maze", seed=1)
+    assert stroke_breaks(steps) < len(steps) / 5
+    # a cell costs one frame in both modes; the pen delay (per stroke) is the only extra
+    legacy = estimate_seconds(steps, 0.02, PenSettings(hold_stroke=False))
+    held = estimate_seconds(steps, 0.02, PenSettings(pen_delay=0.0))
+    assert abs(held - legacy) < 1e-9
+    quick = held
+    assert quick < estimate_seconds(steps, 0.02, PenSettings(pen_delay=0.2))      # pen delay is paid per stroke
+    assert quick < estimate_seconds(steps, 0.02, PenSettings(pen_delay=0.0, color_delay=1.0))
+
+
+def test_pen_modes_cost_one_frame_per_cell(monkeypatch):
+    """Wall-clock parity: hold on/off and glide/teleport all take one frame per cell."""
+    import core.actuator as act
+    from core.plan import DrawStep
+    clock = {"t": 0.0}
+    monkeypatch.setattr(act.time, "perf_counter", lambda: clock["t"])
+
+    def sleep(dt):
+        clock["t"] += dt
+
+    class SlowAutoit(FakeAutoit):
+        def mouse_move(self, x, y, speed=0):
+            super().mouse_move(x, y, speed)
+            if speed:
+                clock["t"] += 0.008                      # a glide takes time
+    monkeypatch.setattr(act, "autoit", SlowAutoit())
+    monkeypatch.setattr(act.time, "sleep", sleep)
+    m = CalibrationModel()
+    m.area, m.fps = (0.0, 0.0, 320.0), 50                # frame = 24 ms
+    m.colorCord, m.inputCord, m.closeCord = [1, 1], [2, 2], [3, 3]
+    picker = act.ColorPicker(m)
+    monkeypatch.setattr(picker, "pick", lambda color: setattr(picker, "current_color", color))
+    row = [DrawStep(i, "#ff0000", i, 0) for i in range(10)] + [DrawStep(10, "#ff0000", 20, 0)]   # a stroke + a jump
+    frame = m.get_frame_sleep_time()
+    for kw in (dict(hold_stroke=False), dict(hold_stroke=True), dict(hold_stroke=False, interpolate=True),
+               dict(hold_stroke=True, interpolate=True)):
+        pencil = act.PencilTool(m, picker, act.PenSettings(color_delay=0.0, **kw))
+        picker.reset()
+        t0 = clock["t"]
+        for st in row:
+            pencil.draw_step(st)
+        assert abs((clock["t"] - t0) - len(row) * frame) < 1e-9, kw
+        pencil.pen_up()
+
+
+def test_color_orders():
+    from core.order import color_order_keys, order_colors, luminance
+    import random
+    img = _shape_image()
+    reference = build_plan(img)
+    counts = {}
+    for s in reference:
+        counts[s.color] = counts.get(s.color, 0) + 1
+    for order in color_order_keys():
+        steps = build_plan(img, "horizontal", seed=3, color_order=order)
+        assert sorted((s.color, s.gx, s.gy) for s in steps) == sorted((s.color, s.gx, s.gy) for s in reference)
+        assert len(color_boundaries(steps)) == len(counts)                  # each color picked once
+    first = lambda order: [s.color for s in build_plan(img, color_order=order) if True][0]   # noqa: E731
+    seq = lambda order: list(dict.fromkeys(s.color for s in build_plan(img, color_order=order, seed=3)))  # noqa: E731
+    assert seq("hex") == sorted(counts) and seq("hex_desc") == sorted(counts)[::-1]
+    lum = [luminance(c) for c in seq("dark_first")]
+    assert lum == sorted(lum) and seq("light_first") == seq("dark_first")[::-1]
+    big = [counts[c] for c in seq("big_first")]
+    assert big == sorted(big, reverse=True) and seq("small_first")[0] == seq("big_first")[-1]
+    assert seq("rainbow")[0] == "#ff0000"                                  # red before green before blue
+    assert seq("random") == seq("random") and seq("random") != order_colors("random", counts, random.Random(99))
+
+
+def test_dither_and_invert():
+    from core.pipeline import Adjustments, process, NormRect
+    grad = Image.linear_gradient("L").convert("RGBA")                      # 256x256 vertical ramp
+    plain = process(grad, NormRect(), Adjustments(palette_limit=4))
+    dith = process(grad, NormRect(), Adjustments(palette_limit=4, dither=True))
+    assert plain.tobytes() != dith.tobytes()                                # dither actually changes pixels
+    assert len(set(dith.getdata())) <= 4                                    # ...within the palette
+    inv = process(grad, NormRect(), Adjustments(invert=True))
+    top, bottom = inv.getpixel((0, 0)), inv.getpixel((0, GRID - 1))
+    assert top[0] > 200 and bottom[0] < 60                                  # ramp flipped

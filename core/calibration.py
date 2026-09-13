@@ -18,6 +18,7 @@ class CalibrationModel:
     def __init__(self, filepath: str = CONFIG_FILENAME):
         self.filepath = filepath
         self.fps = 0
+        self.speed = 1.0     # runtime multiplier on the frame wait (ui_state, not config.json)
         self.area = None            # (x0, y0, size) floats, or None
         self.colorCord = [0, 0]
         self.inputCord = [0, 0]
@@ -62,9 +63,10 @@ class CalibrationModel:
                 self.fps > 0)
 
     def get_frame_sleep_time(self) -> float:
-        '''Sleep between inputs, slightly longer than one frame so the game registers them.'''
+        '''Sleep between inputs, slightly longer than one frame so the game registers them,
+        divided by the user's speed multiplier.'''
         fps = self.fps if self.fps > 0 else 60
-        return (1 / fps) * 1.2
+        return (1 / fps) * 1.2 / max(0.05, self.speed)
 
     # ---- persistence ------------------------------------------------------
     def to_dict(self) -> dict:

@@ -5,13 +5,14 @@ UI thread via queued connections).
 Every start and resume is "armed": the worker waits until no key is held (so a
 hotkey that triggered Play can't leak into the game) and then waits
 `start_delay` seconds before the first click.'''
+import contextlib
 import threading
 import time
 
 import keyboard
 from PySide6.QtCore import QObject, Signal
 
-from .actuator import PencilTool
+from .actuator import PencilTool, focus_game
 from .audio import Audio
 
 IDLE, RUNNING, PAUSED = 'idle', 'running', 'paused'
@@ -23,6 +24,15 @@ def any_key_pressed() -> bool:
     if isinstance(pressed, dict):
         return bool(pressed)
     return any(keyboard.is_pressed(k) for k in MODIFIERS)
+
+
+def timer_resolution(ms):
+    '''Ask Windows for a finer scheduler tick (1 ms) while drawing so `time.sleep(frame)` is
+    accurate; pass None to release it. No-op elsewhere.'''
+    with contextlib.suppress(Exception):
+        import ctypes
+        winmm = ctypes.windll.winmm
+        (winmm.timeBeginPeriod if ms else winmm.timeEndPeriod)(ms or 1)
 
 
 class Drawer(QObject):
@@ -55,7 +65,7 @@ class Drawer(QObject):
         if from_index is not None:
             self._next_index = max(0, min(int(from_index), len(self.steps)))
         if self.state == PAUSED:
-            self.pencil.color_picker.reset()   # the user may have scrubbed
+            self.pencil.reset()                # the user may have scrubbed; pen is up already
             self._set_state(RUNNING)
             self._resume.set()
             return
@@ -65,7 +75,7 @@ class Drawer(QObject):
             return
         self._stop.clear()
         self._resume.set()
-        self.pencil.color_picker.reset()
+        self.pencil.reset()
         self._set_state(RUNNING)
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -124,18 +134,23 @@ class Drawer(QObject):
                 return self._arm()
             self.message.emit(f"Starting in {remaining:.1f}s — keep your hands off the keyboard")
             time.sleep(min(0.1, remaining))
-        self.message.emit("Drawing…")
+        if not focus_game():
+            self.message.emit("Drawing… (no Roblox window found, clicking where the mouse lands)")
+        else:
+            self.message.emit("Drawing…")
         return True
 
     def _run(self):
         completed = False
         armed = False
         try:
+            timer_resolution(1)     # Python 3.10 sleeps in ~15.6 ms ticks on Windows: a 20 ms frame took 31 ms
             while True:
                 if self._stop.is_set():
                     break
                 if not self._resume.is_set():
                     armed = False
+                    self.pencil.pen_up()
                     self.message.emit("Paused.")
                     self._resume.wait()
                     continue
@@ -153,6 +168,11 @@ class Drawer(QObject):
             self.error.emit(str(e))
             Audio.play_error()
         finally:
+            timer_resolution(None)
+            try:
+                self.pencil.pen_up()
+            except Exception as e:  # noqa: BLE001
+                print(f"[pen] could not release the button: {e}")
             if completed:
                 Audio.play_ding()
             self._next_index = 0          # Stop / done -> timeline back to the start

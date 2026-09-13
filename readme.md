@@ -64,8 +64,9 @@ make sense right now.
 ### Output
 
 * Preview of the processed 32×32 result.
-* Palette limit, dither, brightness, contrast, saturation, gamma and alpha
-  cutoff — every change updates the preview instantly.
+* Palette limit, dither (only visible with a limited palette), invert colors
+  (negative), brightness, contrast, saturation, gamma and alpha cutoff — every
+  change updates the preview instantly.
 * **Draw order** — how the pixels of each color are sequenced (colors are
   always drawn one after another, since switching costs a color picker trip):
   *Horizontal* / *Vertical* (printer scans), *Diagonal*, *Spiral* (outer ring
@@ -73,11 +74,36 @@ make sense right now.
   robot tracing), *Maze* (starts at a random cell and carves a winding path,
   backtracking when stuck) and *Scatter* (random). 🎲 rerolls the random ones.
   Scrub the timeline to watch any order play out in the preview.
+* **Color order** — in which order the colors are picked: hex code (the
+  classic) or reversed, dark → light, light → dark, biggest area first,
+  smallest area first, rainbow (grays, then by hue) and random (🎲).
+* **Speed** — multiplier on the wait between inputs (the base comes from the
+  FPS in Settings). Can be changed while drawing; the ETA follows it.
 * **Show final result** on: preview the finished picture. Off: only the pixels
   placed so far are shown, following the timeline. Click-dragging the timeline
   always previews the progress, whatever the toggle says.
 * The status line shows how many colors (= color picker trips), steps and
   roughly how long the drawing will take.
+
+### Pen (⚙ Settings)
+
+Every cell costs exactly one frame (1.2 / FPS ÷ Speed) in every mode; the
+options below only change *how* the cursor gets there.
+
+* **Hold the button across neighbouring cells** (default on): the pen goes
+  down on the first cell of a stroke and stays down while the next step
+  touches the current cell in any of the 8 directions. A jump or a color
+  change lifts it. Off = the original click-per-cell. A stroke start presses
+  at the end of its frame, exactly where the click of the original mode lands,
+  so both modes draw at the same rate.
+* **Pen up/down delay** (default 0) and **Color change delay**: extra waits,
+  paid per stroke / per color, never per cell.
+* **Interpolate movement** (default off): glide the cursor between cells at
+  the chosen speed instead of teleporting. The glide runs inside the cell's
+  frame, so it only slows the draw when it takes longer than a frame. A
+  diagonal glide crosses the corner shared by four cells, so the game can
+  paint a stray neighbour — keep it off for pixel-perfect results.
+* Pause and Stop always lift the pen.
 
 ## Hotkeys
 

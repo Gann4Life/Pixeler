@@ -7,8 +7,9 @@ from PySide6.QtWidgets import (QWidget, QFormLayout, QLabel, QSlider, QCheckBox,
                                QSplitter, QSplitterHandle)
 
 from core.drawer import RUNNING
-from core.order import METHODS, is_random
+from core.order import METHODS, COLOR_ORDERS, is_random
 from core.pipeline import Adjustments
+from core.state import SPEED_MIN, SPEED_MAX
 from core.plan import render_progress, color_boundaries, estimate_seconds
 from .app import PixelerApp
 from .crop_editor import pil_to_qpixmap
@@ -121,6 +122,7 @@ class OutputPanel(FloatingPanel):
         self._syncing = False
         self._index = 0
         self._scrubbing = False
+        self._running = False
 
         self.preview = PreviewWidget()
         self.preview.setToolTip("Processed result (what will be drawn)")
@@ -140,8 +142,13 @@ class OutputPanel(FloatingPanel):
         form.addRow("Palette limit", self.palette)
 
         self.dither = QCheckBox()
-        self.dither.setToolTip("Floyd–Steinberg dithering when the palette is limited")
+        self.dither.setToolTip("Floyd–Steinberg dithering: mixes the limited palette to fake in-between shades.\n"
+                               "Only does something when the palette is limited.")
         form.addRow("Dither", self.dither)
+
+        self.invert = QCheckBox()
+        self.invert.setToolTip("Negative of the picture (applied after brightness/contrast/gamma, before the palette)")
+        form.addRow("Invert colors", self.invert)
 
         self.sliders = {}
         for key, label, tip in (
@@ -183,12 +190,31 @@ class OutputPanel(FloatingPanel):
         self.reroll_button.setText("🎲")
         self.reroll_button.setFixedSize(30, 24)
         self.reroll_button.setStyleSheet('font-family: "Segoe UI Symbol", "Segoe UI Emoji"; font-size: 14px;')
-        self.reroll_button.setToolTip("New random seed for the Maze / Scatter orders")
+        self.reroll_button.setToolTip("New random seed for the Maze / Scatter / Random orders")
         mrow = QHBoxLayout()
         mrow.setSpacing(4)
         mrow.addWidget(self.method, 1)
         mrow.addWidget(self.reroll_button)
         form.addRow("Draw order", mrow)
+
+        # ---- color order (in which order the colors are picked)
+        self.color_order = QComboBox()
+        for key, label, desc in COLOR_ORDERS:
+            self.color_order.addItem(label, key)
+            self.color_order.setItemData(self.color_order.count() - 1, desc, Qt.ToolTipRole)
+        form.addRow("Color order", self.color_order)
+
+        # ---- speed: multiplier on the per-frame wait; can be changed while drawing
+        self.speed = QSlider(Qt.Horizontal, minimum=int(SPEED_MIN * 100), maximum=int(SPEED_MAX * 100))
+        self.speed.setToolTip("Multiplier on the wait between inputs (base = 1.2 frames at the FPS from Settings).\n"
+                              "Higher is faster; too high and the game starts dropping clicks. Works while drawing.")
+        srow = QHBoxLayout()
+        srow.setSpacing(4)
+        self.speed_label = QLabel("1.00×")
+        self.speed_label.setMinimumWidth(34)
+        srow.addWidget(self.speed, 1)
+        srow.addWidget(self.speed_label)
+        form.addRow("Speed", srow)
 
         self.final_toggle = QCheckBox("Show final result")
         self.final_toggle.setToolTip("On: preview the finished image.\n"
@@ -225,6 +251,7 @@ class OutputPanel(FloatingPanel):
         self.final_toggle.setChecked(app.state.output_shows_final)
         self.palette.currentIndexChanged.connect(self._push)
         self.dither.toggled.connect(self._push)
+        self.invert.toggled.connect(self._push)
         for s, _ in self.sliders.values():
             s.valueChanged.connect(self._push)
         self.alpha.valueChanged.connect(self._push)
@@ -232,7 +259,18 @@ class OutputPanel(FloatingPanel):
         self.final_toggle.toggled.connect(self._on_final_toggled)
         self.grid_toggle.toggled.connect(self._on_grid_toggled)
         self._load_method(app.draw_method, app.draw_seed)
+        self._load_color_order(app.color_order)
+        self._load_speed(app.state.speed)
+        self.speed.valueChanged.connect(self._on_speed_slider)
+        app.speed_changed.connect(self._load_speed)
+        app.pen_changed.connect(lambda _: self._update_stats())
+        # everything that would rebuild the plan is locked while a draw is running; Speed stays live
+        self._locked_while_running = [self.palette, self.dither, self.invert, self.alpha, self.reset_button,
+                                      self.method, self.color_order, self.reroll_button] + \
+                                     [s for s, _ in self.sliders.values()]
         self.method.currentIndexChanged.connect(self._on_method_changed)
+        self.color_order.currentIndexChanged.connect(self._on_color_order_changed)
+        app.color_order_changed.connect(self._load_color_order)
         self.reroll_button.clicked.connect(app.reroll_seed)
         app.draw_method_changed.connect(self._load_method)
         app.scrubbing.connect(self._on_scrubbing)
@@ -279,6 +317,7 @@ class OutputPanel(FloatingPanel):
         idx = self.palette.findData(adj.palette_limit)
         self.palette.setCurrentIndex(idx if idx >= 0 else 0)
         self.dither.setChecked(adj.dither)
+        self.invert.setChecked(adj.invert)
         for key, (s, val) in self.sliders.items():
             v = float(getattr(adj, key))
             s.setValue(int(round(v * 100)))
@@ -297,6 +336,7 @@ class OutputPanel(FloatingPanel):
             gamma=max(0.05, self.sliders["gamma"][0].value() / 100),
             palette_limit=int(self.palette.currentData()),
             dither=self.dither.isChecked(),
+            invert=self.invert.isChecked(),
             alpha_threshold=self.alpha.value(),
         )
         for key, (s, val) in self.sliders.items():
@@ -310,12 +350,43 @@ class OutputPanel(FloatingPanel):
         idx = self.method.findData(method)
         self.method.setCurrentIndex(idx if idx >= 0 else 0)
         self.method.setToolTip(self.method.itemData(self.method.currentIndex(), Qt.ToolTipRole) or "")
-        self.reroll_button.setEnabled(is_random(method))
         self._syncing = False
+        self._update_reroll()
 
     def _on_method_changed(self, *_):
         if not self._syncing:
             self.app.set_draw_method(self.method.currentData())
+
+    def _load_color_order(self, order: str):
+        self._syncing = True
+        idx = self.color_order.findData(order)
+        self.color_order.setCurrentIndex(idx if idx >= 0 else 0)
+        self.color_order.setToolTip(self.color_order.itemData(self.color_order.currentIndex(), Qt.ToolTipRole) or "")
+        self._syncing = False
+        self._update_reroll()
+
+    def _on_color_order_changed(self, *_):
+        if not self._syncing:
+            self.app.set_color_order(self.color_order.currentData())
+
+    def _update_reroll(self):
+        if not hasattr(self, "color_order"):
+            return
+        self.reroll_button.setEnabled(not self._running and
+                                      is_random(self.method.currentData(), self.color_order.currentData()))
+
+    # ---- speed -------------------------------------------------------------------------------------
+    def _load_speed(self, speed: float):
+        self._syncing = True
+        self.speed.setValue(int(round(speed * 100)))
+        self.speed_label.setText(f"{speed:.2f}×")
+        self._syncing = False
+        self._update_stats()
+
+    def _on_speed_slider(self, value: int):
+        self.speed_label.setText(f"{value / 100:.2f}×")
+        if not self._syncing:
+            self.app.set_speed(value / 100)
 
     # ---- preview ----------------------------------------------------------------------------------
     def _follows_timeline(self) -> bool:
@@ -328,11 +399,15 @@ class OutputPanel(FloatingPanel):
     def _on_output(self, img, steps):
         self._index = min(self._index, len(steps))
         self._render_timer.start()
-        if img is None:
+        self._update_stats()
+
+    def _update_stats(self):
+        steps = self.app.steps
+        if self.app.output is None:
             self.stats.setText("—")
             return
         n_colors = len(color_boundaries(steps))
-        eta = estimate_seconds(steps, self.app.calibration.get_frame_sleep_time())
+        eta = estimate_seconds(steps, self.app.calibration.get_frame_sleep_time(), self.app.pencil.pen)
         m, s = divmod(int(eta), 60)
         self.stats.setText(f"{n_colors} colors · {len(steps)} steps · ~{m}m {s:02d}s")
 
@@ -357,4 +432,7 @@ class OutputPanel(FloatingPanel):
         self.preview.update()
 
     def _on_state(self, state: str):
-        self.form_container.setEnabled(state != RUNNING)
+        self._running = state == RUNNING
+        for w in self._locked_while_running:
+            w.setEnabled(not self._running)
+        self._update_reroll()

@@ -3,10 +3,12 @@ crop, adjustments, hotkey bindings and the output preview toggle.'''
 import json
 import os
 
-from .order import DEFAULT_METHOD, method_keys
+from .actuator import PenSettings
+from .order import DEFAULT_METHOD, DEFAULT_COLOR_ORDER, method_keys, color_order_keys
 from .pipeline import NormRect, Adjustments
 
 STATE_FILENAME = 'ui_state.json'
+SPEED_MIN, SPEED_MAX = 0.25, 4.0
 
 DEFAULT_PANELS = {
     "input":  {"x": 40,  "y": 60, "w": 360, "h": 420, "opacity": 1.0, "on_top": True},
@@ -25,7 +27,10 @@ class UiState:
         self.output_shows_final = True
         self.start_delay = 1.5       # seconds between "all keys released" and the first click
         self.draw_method = DEFAULT_METHOD
-        self.draw_seed = 0           # for the randomized draw orders (maze, scatter)
+        self.draw_seed = 0           # for the randomized draw orders (maze, scatter, random colors)
+        self.color_order = DEFAULT_COLOR_ORDER
+        self.speed = 1.0             # multiplier on the per-frame wait (1.0 = as FPS dictates)
+        self.pen = PenSettings()
         self.last_image_dir = ""
 
     def panel(self, name: str) -> dict:
@@ -41,6 +46,9 @@ class UiState:
             "start_delay": self.start_delay,
             "draw_method": self.draw_method,
             "draw_seed": self.draw_seed,
+            "color_order": self.color_order,
+            "speed": self.speed,
+            "pen": self.pen.to_dict(),
             "last_image_dir": self.last_image_dir,
         }
 
@@ -56,10 +64,16 @@ class UiState:
         except (TypeError, ValueError):
             self.start_delay = 1.5
         self.draw_method = d.get("draw_method") if d.get("draw_method") in method_keys() else DEFAULT_METHOD
+        self.color_order = d.get("color_order") if d.get("color_order") in color_order_keys() else DEFAULT_COLOR_ORDER
         try:
             self.draw_seed = int(d.get("draw_seed", 0))
         except (TypeError, ValueError):
             self.draw_seed = 0
+        try:
+            self.speed = min(SPEED_MAX, max(SPEED_MIN, float(d.get("speed", 1.0))))
+        except (TypeError, ValueError):
+            self.speed = 1.0
+        self.pen = PenSettings.from_dict(d.get("pen"))
         self.last_image_dir = d.get("last_image_dir", "") or ""
 
     def load(self) -> bool:

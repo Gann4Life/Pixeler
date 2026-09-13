@@ -1,8 +1,8 @@
 '''Turns the processed GRID x GRID image into an ordered list of draw steps.
 
-Colors are sorted by hex string (each color is picked once); the order of the
-cells inside a color is chosen by a draw-order algorithm (core.order). The
-default "horizontal" matches the original draw loop. Transparent pixels are
+Each color is picked once; the order of the colors and the order of the cells
+inside a color are chosen by the algorithms in core.order. The defaults (hex
+order, "horizontal") match the original draw loop. Transparent pixels are
 skipped.
 '''
 import random
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from PIL import Image
 
-from .order import order_cells, DEFAULT_METHOD
+from .order import order_cells, order_colors, DEFAULT_METHOD, DEFAULT_COLOR_ORDER
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,8 @@ def hex_of(r: int, g: int, b: int) -> str:
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
 
-def build_plan(img: Image.Image, method: str = DEFAULT_METHOD, seed: int = 0) -> list:
+def build_plan(img: Image.Image, method: str = DEFAULT_METHOD, seed: int = 0,
+               color_order: str = DEFAULT_COLOR_ORDER) -> list:
     '''img must be RGBA with binary alpha (see pipeline.process).'''
     if img is None:
         return []
@@ -40,7 +41,7 @@ def build_plan(img: Image.Image, method: str = DEFAULT_METHOD, seed: int = 0) ->
             by_color.setdefault(hex_of(r, g, b), []).append((x, y))
 
     steps = []
-    for color in sorted(by_color):
+    for color in order_colors(color_order, by_color, rng):
         for (x, y) in order_cells(method, by_color[color], max(img.width, img.height), rng):
             steps.append(DrawStep(len(steps), color, x, y))
     return steps
@@ -69,11 +70,27 @@ def render_progress(img: Image.Image, steps: list, upto: int) -> Image.Image:
     return out
 
 
-def estimate_seconds(steps: list, frame_sleep: float) -> float:
-    '''Rough ETA: each pixel costs ~4 clicks + one frame sleep; each color change ~3 settle-clicks.'''
+def stroke_breaks(steps: list) -> int:
+    '''Number of strokes when the pen is held across touching cells of the same color.'''
+    n = 0
+    last = None
+    for s in steps:
+        if last is None or s.color != last.color or max(abs(s.gx - last.gx), abs(s.gy - last.gy)) > 1:
+            n += 1
+        last = s
+    return n
+
+
+def estimate_seconds(steps: list, frame_sleep: float, pen=None) -> float:
+    '''Rough ETA. One frame per cell in every mode; each color change ~3 settle-clicks + typing.
+    With a held pen (`pen.hold_stroke`) each stroke adds the pen delay twice (down and up).'''
     if not steps:
         return 0.0
-    per_pixel = 0.003 + frame_sleep
-    per_color = 3 * (2 * frame_sleep + 0.005) + 0.15   # + typing the hex code
     n_colors = len(color_boundaries(steps))
-    return len(steps) * per_pixel + n_colors * per_color
+    per_color = 3 * (2 * frame_sleep + 0.005) + 0.15   # + typing the hex code
+    if pen is not None:
+        per_color += pen.color_delay
+    total = len(steps) * frame_sleep + n_colors * per_color
+    if pen is not None and pen.hold_stroke:
+        total += stroke_breaks(steps) * 2 * pen.pen_delay
+    return total

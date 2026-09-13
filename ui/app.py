@@ -8,15 +8,15 @@ from PIL import Image, ImageGrab, UnidentifiedImageError
 from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtWidgets import QFileDialog, QApplication
 
-from core.actuator import ColorPicker, PencilTool
+from core.actuator import ColorPicker, PencilTool, PenSettings
 from core.audio import Audio
 from core.calibration import CalibrationModel
 from core.drawer import Drawer, IDLE, RUNNING
 from core.hotkeys import HotkeyManager
-from core.order import method_keys
+from core.order import method_keys, color_order_keys
 from core.pipeline import NormRect, Adjustments, process, to_rgba
 from core.plan import build_plan
-from core.state import UiState
+from core.state import UiState, SPEED_MIN, SPEED_MAX
 
 IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp *.tif *.tiff);;All files (*.*)"
 
@@ -30,6 +30,9 @@ class PixelerApp(QObject):
     panels_toggled = Signal(bool)
     scrubbing = Signal(bool)                 # True while the timeline is being click-dragged
     draw_method_changed = Signal(str, int)   # method key, seed
+    color_order_changed = Signal(str)
+    speed_changed = Signal(float)
+    pen_changed = Signal(object)             # PenSettings
 
     def __init__(self):
         super().__init__()
@@ -37,9 +40,10 @@ class PixelerApp(QObject):
         self.state.load()
         self.calibration = CalibrationModel()
         self.calibration.load_config()
+        self.calibration.speed = self.state.speed
 
         self.color_picker = ColorPicker(self.calibration)
-        self.pencil = PencilTool(self.calibration, self.color_picker)
+        self.pencil = PencilTool(self.calibration, self.color_picker, self.state.pen)
         self.drawer = Drawer(self.pencil)
         self.drawer.start_delay = self.state.start_delay
         self.drawer.error.connect(lambda m: self.status.emit(m, True))
@@ -55,6 +59,7 @@ class PixelerApp(QObject):
         self.steps = []
         self.draw_method = self.state.draw_method
         self.draw_seed = self.state.draw_seed
+        self.color_order = self.state.color_order
         self.panels = []     # set by __main__
 
     # ---- lifecycle ---------------------------------------------------------------------------
@@ -140,7 +145,7 @@ class PixelerApp(QObject):
             self.output, self.steps = None, []
         else:
             self.output = process(self.source, self.crop, self.adjustments)
-            self.steps = build_plan(self.output, self.draw_method, self.draw_seed)
+            self.steps = build_plan(self.output, self.draw_method, self.draw_seed, self.color_order)
         self.drawer.set_steps(self.steps)
         self.output_changed.emit(self.output, self.steps)
 
@@ -156,8 +161,29 @@ class PixelerApp(QObject):
         self.rebuild()
         self.state.save()
 
+    def set_speed(self, speed: float):
+        '''Live: the pencil reads the frame wait on every input, so this applies mid-draw.'''
+        self.state.speed = min(SPEED_MAX, max(SPEED_MIN, float(speed)))
+        self.calibration.speed = self.state.speed
+        self.speed_changed.emit(self.state.speed)
+        self.state.save()
+
+    def set_pen(self, pen: PenSettings):
+        self.state.pen = pen
+        self.pencil.pen = pen
+        self.pen_changed.emit(pen)
+        self.state.save()
+
+    def set_color_order(self, order: str):
+        if order not in color_order_keys():
+            return
+        self.color_order = self.state.color_order = order
+        self.color_order_changed.emit(order)
+        self.rebuild()
+        self.state.save()
+
     def reroll_seed(self):
-        '''New random seed for the randomized orders (maze, scatter).'''
+        '''New random seed for the randomized orders (maze, scatter, random colors).'''
         self.set_draw_method(self.draw_method, random.randrange(1, 1_000_000))
 
     # ---- transport ----------------------------------------------------------------------------

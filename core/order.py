@@ -1,4 +1,5 @@
-'''Draw-order algorithms: how the cells of one color are sequenced.
+'''Draw-order algorithms: in which order the colors are picked, and how the
+cells of one color are sequenced.
 
 Pixeler clicks every cell, so unlike stroke-based tools (autodraw's DFS /
 edge-following) an algorithm never changes *what* is drawn — only the order in
@@ -8,6 +9,7 @@ settle-clicks and typing a hex code); the algorithm runs once per color.
 Every function takes the cells of one color as (x, y) tuples and returns the
 same cells reordered. Randomized methods take a `random.Random` so a seed
 reproduces the plan exactly.'''
+import colorsys
 import functools
 import random
 
@@ -38,12 +40,80 @@ RANDOM_METHODS = ("maze", "scatter")
 STRAIGHT_BIAS = 0.65   # maze: chance to keep going straight when possible (longer corridors)
 
 
+# (key, label, description) for the order in which the colors are picked.
+COLOR_ORDERS = (
+    ("hex", "Hex code (A→Z)",
+     "Colors sorted by their hex code. The classic order."),
+    ("hex_desc", "Hex code (Z→A)",
+     "The classic order, reversed."),
+    ("dark_first", "Dark → light",
+     "Darkest color first, brightest last (shadows before highlights)."),
+    ("light_first", "Light → dark",
+     "Brightest color first, darkest last."),
+    ("big_first", "Biggest area first",
+     "The color with the most pixels first, so the picture takes shape early."),
+    ("small_first", "Smallest area first",
+     "Details first, big areas last."),
+    ("rainbow", "Rainbow",
+     "Grays first (dark to light), then by hue: red, yellow, green, cyan, blue, magenta."),
+    ("random", "Random",
+     "Shuffled. Press 🎲 to reshuffle."),
+)
+DEFAULT_COLOR_ORDER = "hex"
+RANDOM_COLOR_ORDERS = ("random",)
+
+
 def method_keys() -> list:
     return [m[0] for m in METHODS]
 
 
-def is_random(method: str) -> bool:
-    return method in RANDOM_METHODS
+def color_order_keys() -> list:
+    return [m[0] for m in COLOR_ORDERS]
+
+
+def is_random(method: str, color_order: str = DEFAULT_COLOR_ORDER) -> bool:
+    '''True when the 🎲 seed affects the plan.'''
+    return method in RANDOM_METHODS or color_order in RANDOM_COLOR_ORDERS
+
+
+# ---- color order -----------------------------------------------------------------------------
+def _rgb(color: str) -> tuple:
+    return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def luminance(color: str) -> float:
+    r, g, b = _rgb(color)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _rainbow_key(color: str) -> tuple:
+    r, g, b = _rgb(color)
+    h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    if s < 0.12:                                  # near-gray: before the hues, dark to light
+        return (0, v, 0.0)
+    return (1, h, v)
+
+
+def order_colors(order: str, by_color: dict, rng: random.Random) -> list:
+    '''Sequence of the color keys of `by_color` ({"#rrggbb": [cells]}). Ties fall back to the
+    hex order so the result is deterministic.'''
+    colors = sorted(by_color)
+    if order == "hex_desc":
+        return colors[::-1]
+    if order == "dark_first":
+        return sorted(colors, key=lambda c: (luminance(c), c))
+    if order == "light_first":
+        return sorted(colors, key=lambda c: (-luminance(c), c))
+    if order == "big_first":
+        return sorted(colors, key=lambda c: (-len(by_color[c]), c))
+    if order == "small_first":
+        return sorted(colors, key=lambda c: (len(by_color[c]), c))
+    if order == "rainbow":
+        return sorted(colors, key=lambda c: (_rainbow_key(c), c))
+    if order == "random":
+        rng.shuffle(colors)
+        return colors
+    return colors
 
 
 def order_cells(method: str, cells: list, grid: int, rng: random.Random) -> list:
