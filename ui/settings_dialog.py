@@ -1,7 +1,7 @@
 '''Settings: framerate, hotkey bindings, and the entry point to calibration.'''
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QGroupBox, QSpinBox, QLabel,
-                               QPushButton, QHBoxLayout, QDialogButtonBox)
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QGroupBox, QSpinBox, QDoubleSpinBox,
+                               QLabel, QPushButton, QHBoxLayout, QDialogButtonBox)
 
 from core.hotkeys import ACTIONS, DEFAULTS, roblox_conflict
 from .app import PixelerApp
@@ -31,6 +31,10 @@ class SettingsDialog(QDialog):
         self.fps.setValue(app.calibration.fps or 60)
         self.fps.setToolTip("Your average Roblox FPS (Shift+F5 in Roblox shows it). Inputs are spaced to ~1.2 frames.")
         fps_row.addRow("Roblox FPS", self.fps)
+        self.start_delay = QDoubleSpinBox(minimum=0.0, maximum=10.0, singleStep=0.5, decimals=1, suffix=" s")
+        self.start_delay.setValue(app.state.start_delay)
+        self.start_delay.setToolTip("After Play (or resume) Pixeler waits until no key is held, then this long, before the first click.")
+        fps_row.addRow("Start delay", self.start_delay)
         cl.addLayout(fps_row)
         self.cal_button = QPushButton("Calibrate canvas and color picker…")
         self.cal_button.clicked.connect(self._calibrate)
@@ -98,6 +102,7 @@ class SettingsDialog(QDialog):
 
     def accept(self):
         self._apply_fps()
+        self.app.set_start_delay(self.start_delay.value())
         failed = []
         for action, cap in self.captures.items():
             key = cap.key()

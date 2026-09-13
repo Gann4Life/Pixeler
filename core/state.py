@@ -10,6 +10,7 @@ STATE_FILENAME = 'ui_state.json'
 DEFAULT_PANELS = {
     "input":  {"x": 40,  "y": 60, "w": 360, "h": 420, "opacity": 1.0, "on_top": True},
     "output": {"x": 420, "y": 60, "w": 520, "h": 420, "opacity": 1.0, "on_top": True},
+    "status": {"x": 40,  "y": 500, "w": 400, "h": 96, "opacity": 0.9, "on_top": True},
 }
 
 
@@ -21,6 +22,7 @@ class UiState:
         self.adjustments = Adjustments()
         self.hotkeys = {}
         self.output_shows_final = True
+        self.start_delay = 1.5       # seconds between "all keys released" and the first click
         self.last_image_dir = ""
 
     def panel(self, name: str) -> dict:
@@ -33,16 +35,21 @@ class UiState:
             "adjustments": self.adjustments.to_dict(),
             "hotkeys": self.hotkeys,
             "output_shows_final": self.output_shows_final,
+            "start_delay": self.start_delay,
             "last_image_dir": self.last_image_dir,
         }
 
     def from_dict(self, d: dict):
         for name, p in (d.get("panels") or {}).items():
-            self.panel(name).update({k: v for k, v in p.items() if k in DEFAULT_PANELS["input"]})
+            self.panel(name).update({k: v for k, v in p.items() if k != "visible"})
         self.crop = NormRect.from_dict(d.get("crop"))
         self.adjustments = Adjustments.from_dict(d.get("adjustments"))
         self.hotkeys = dict(d.get("hotkeys") or {})
         self.output_shows_final = bool(d.get("output_shows_final", True))
+        try:
+            self.start_delay = max(0.0, float(d.get("start_delay", 1.5)))
+        except (TypeError, ValueError):
+            self.start_delay = 1.5
         self.last_image_dir = d.get("last_image_dir", "") or ""
 
     def load(self) -> bool:

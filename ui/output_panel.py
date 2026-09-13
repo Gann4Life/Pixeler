@@ -1,8 +1,10 @@
-'''Output panel: processed 32x32 preview, adjustment properties, final/timeline toggle, stats.'''
-from PySide6.QtCore import Qt, QRectF, QTimer
+'''Output panel: processed 32x32 preview on top, a draggable/foldable divider,
+adjustment properties below, and a stats line.'''
+from PySide6.QtCore import Qt, QRectF, QTimer, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen
-from PySide6.QtWidgets import (QWidget, QBoxLayout, QFormLayout, QLabel, QSlider, QCheckBox,
-                               QComboBox, QPushButton, QHBoxLayout, QSizePolicy, QScrollArea)
+from PySide6.QtWidgets import (QWidget, QFormLayout, QLabel, QSlider, QCheckBox, QComboBox,
+                               QPushButton, QHBoxLayout, QSizePolicy, QScrollArea, QSplitter,
+                               QSplitterHandle)
 
 from core.drawer import RUNNING
 from core.pipeline import Adjustments
@@ -12,6 +14,7 @@ from .crop_editor import pil_to_qpixmap
 from .floating_panel import FloatingPanel
 
 PALETTE_CHOICES = [0, 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256]
+HANDLE_H = 10
 
 
 class PreviewWidget(QWidget):
@@ -19,7 +22,7 @@ class PreviewWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(96, 96)
+        self.setMinimumSize(64, 64)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._pixmap = None
         self.show_grid = False
@@ -34,7 +37,6 @@ class PreviewWidget(QWidget):
         side = min(self.width(), self.height())
         ox, oy = (self.width() - side) / 2, (self.height() - side) / 2
         target = QRectF(ox, oy, side, side)
-        # checkerboard
         cell = max(4, side / 16)
         for i in range(16):
             for j in range(16):
@@ -58,6 +60,59 @@ class PreviewWidget(QWidget):
                 p.drawLine(QRectF(ox, y, side, 0).topLeft(), QRectF(ox, y, side, 0).topRight())
 
 
+class FoldHandle(QSplitterHandle):
+    '''Splitter handle: drag to resize the image/properties split, click to fold/unfold.'''
+
+    def __init__(self, orientation, splitter):
+        super().__init__(orientation, splitter)
+        self._press = None
+        self.setToolTip("Drag to resize the preview. Click to fold / unfold the properties.")
+
+    def mousePressEvent(self, e):
+        self._press = e.position().toPoint()
+        super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        if self._press is not None and (e.position().toPoint() - self._press).manhattanLength() < 4:
+            self.splitter().toggle_fold()
+        self._press = None
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(43, 45, 49))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(110, 113, 120))
+        cx, cy = self.width() / 2, self.height() / 2
+        if self.splitter().folded:      # small "▲" hint when folded
+            pts = [QPoint(int(cx - 5), int(cy + 2)), QPoint(int(cx + 5), int(cy + 2)), QPoint(int(cx), int(cy - 3))]
+            p.drawPolygon(pts)
+        else:                            # grip
+            p.drawRoundedRect(QRectF(cx - 16, cy - 1.5, 32, 3), 1.5, 1.5)
+
+
+class FoldSplitter(QSplitter):
+    def __init__(self, parent=None):
+        super().__init__(Qt.Vertical, parent)
+        self.folded = False
+        self._unfolded_sizes = None
+        self.setHandleWidth(HANDLE_H)
+        self.setChildrenCollapsible(True)
+
+    def createHandle(self):
+        return FoldHandle(self.orientation(), self)
+
+    def toggle_fold(self):
+        if self.folded:
+            self.folded = False
+            self.setSizes(self._unfolded_sizes or [1, 2])
+        else:
+            self._unfolded_sizes = self.sizes()
+            self.folded = True
+            self.setSizes([sum(self.sizes()), 0])
+        self.handle(1).update()
+
+
 class OutputPanel(FloatingPanel):
     def __init__(self, app: PixelerApp):
         super().__init__("output", "Output", app.state)
@@ -71,7 +126,7 @@ class OutputPanel(FloatingPanel):
         # ---- properties form
         form_widget = QWidget()
         form = QFormLayout(form_widget)
-        form.setContentsMargins(0, 0, 0, 0)
+        form.setContentsMargins(0, 4, 0, 0)
         form.setHorizontalSpacing(8)
         form.setVerticalSpacing(4)
         form.setLabelAlignment(Qt.AlignRight)
@@ -130,14 +185,17 @@ class OutputPanel(FloatingPanel):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setMinimumWidth(200)
+        scroll.setMinimumHeight(0)
         self.form_container = scroll
 
-        self.split = QBoxLayout(QBoxLayout.LeftToRight)
-        self.split.setSpacing(8)
-        self.split.addWidget(self.preview, 3)
-        self.split.addWidget(self.form_container, 2)
-        self.body.addLayout(self.split, 1)
+        # ---- vertical split: preview | handle | properties
+        self.split = FoldSplitter()
+        self.split.addWidget(self.preview)
+        self.split.addWidget(self.form_container)
+        self.split.setStretchFactor(0, 1)
+        self.split.setStretchFactor(1, 2)
+        self.split.splitterMoved.connect(self._on_split_moved)
+        self.body.addWidget(self.split, 1)
 
         self.stats = QLabel("—")
         self.stats.setStyleSheet("color: #a0a3a8; font-size: 11px;")
@@ -161,6 +219,35 @@ class OutputPanel(FloatingPanel):
         app.drawer.state_changed.connect(self._on_state)
         self._render_timer = QTimer(self, singleShot=True, interval=16)
         self._render_timer.timeout.connect(self._render)
+        QTimer.singleShot(0, self._restore_split)
+
+    # ---- split persistence -----------------------------------------------------------------
+    def _restore_split(self):
+        p = self.state.panel(self.panel_name)
+        total = max(1, self.split.height() - HANDLE_H)
+        sizes = p.get("split")
+        if sizes and len(sizes) == 2 and sum(sizes) > 0:
+            self.split._unfolded_sizes = [int(total * sizes[0] / sum(sizes)), int(total * sizes[1] / sum(sizes))]
+        else:
+            self.split._unfolded_sizes = [total // 3, total - total // 3]
+        self.split.setSizes(self.split._unfolded_sizes)
+        if p.get("folded"):
+            self.split.folded = False
+            self.split.toggle_fold()
+
+    def _on_split_moved(self, *_):
+        if not self.split.folded:
+            self.state.panel(self.panel_name)["split"] = self.split.sizes()
+            self._save_timer.start()
+
+    def _persist(self):
+        p = self.state.panel(self.panel_name)
+        p["folded"] = self.split.folded
+        if not self.split.folded:
+            p["split"] = self.split.sizes()
+        elif self.split._unfolded_sizes:
+            p["split"] = self.split._unfolded_sizes
+        super()._persist()
 
     # ---- adjustments <-> widgets ----------------------------------------------------------
     def _load_adjustments(self, adj: Adjustments):
@@ -227,11 +314,3 @@ class OutputPanel(FloatingPanel):
 
     def _on_state(self, state: str):
         self.form_container.setEnabled(state != RUNNING)
-
-    # ---- responsive: stack the form under the preview when narrow ----------------------------
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        narrow = self.width() < 430
-        want = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
-        if self.split.direction() != want:
-            self.split.setDirection(want)

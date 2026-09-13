@@ -57,6 +57,12 @@ class CropEditor(QWidget):
         self._pan = QPointF(0, 0)
         self.update()
 
+    def zoom_in(self):
+        self._set_zoom(self._zoom * 1.25)
+
+    def zoom_out(self):
+        self._set_zoom(self._zoom / 1.25)
+
     def _set_zoom(self, zoom: float, anchor: QPointF = None):
         '''Zoom keeping the image point under `anchor` (widget coords) fixed.'''
         zoom = max(1.0, min(self.MAX_ZOOM, zoom))

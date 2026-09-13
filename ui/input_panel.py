@@ -1,6 +1,7 @@
 '''Input panel: source image with crop editor, transport, load buttons, timeline.'''
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSlider, QLabel, QSizePolicy
+from PySide6.QtCore import QSize
+from PySide6.QtWidgets import QHBoxLayout, QToolButton, QSlider, QLabel
 
 from core.drawer import IDLE, RUNNING, PAUSED
 from .app import PixelerApp
@@ -15,66 +16,66 @@ class InputPanel(FloatingPanel):
         self.settings_button = self.add_title_button("⚙", "Settings and calibration", self._open_settings)
         self.open_settings = None   # injected by __main__
 
-        # ---- image + crop
+        self.body.setContentsMargins(4, 4, 4, 4)
+        self.body.setSpacing(2)
+
+        # ---- image + crop (fills the panel)
         self.editor = CropEditor()
         self.editor.set_crop(app.crop)
         self.editor.crop_changed.connect(app.set_crop)
         self.body.addWidget(self.editor, 1)
 
-        # ---- transport / load row
-        row = QHBoxLayout()
-        row.setSpacing(4)
-        self.play_button = QPushButton("▶")
-        self.play_button.clicked.connect(app.play_pause)
-        self.stop_button = QPushButton("⏹")
-        self.stop_button.clicked.connect(app.stop)
-        self.stop_button.setEnabled(False)
-        self.file_button = QPushButton("📁")
-        self.file_button.clicked.connect(lambda: app.load_file())
-        self.clip_button = QPushButton("📋")
-        self.clip_button.clicked.connect(app.load_clipboard)
-        self.reset_crop_button = QPushButton("⟲ crop")
-        self.reset_crop_button.clicked.connect(app.reset_crop)
-        for b in (self.play_button, self.stop_button, self.file_button, self.clip_button, self.reset_crop_button):
-            b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            b.setMinimumWidth(28)
-            b.setStyleSheet('font-family: "Segoe UI Symbol", "Segoe UI Emoji"; font-size: 15px; padding: 2px 6px;')
-        row.addWidget(self.play_button)
-        row.addWidget(self.stop_button)
-        row.addSpacing(8)
-        row.addWidget(self.file_button)
-        row.addWidget(self.clip_button)
-        row.addSpacing(8)
-        row.addWidget(self.reset_crop_button)
-        self.body.addLayout(row)
-
-        # ---- timeline
+        # ---- timeline, directly under the image
         tl = QHBoxLayout()
         tl.setSpacing(6)
+        tl.setContentsMargins(2, 0, 2, 0)
         self.timeline = QSlider(Qt.Horizontal, minimum=0, maximum=0)
         self.timeline.setToolTip("Timeline — drag to scrub; Play resumes from here.\n"
                                  "Crop/adjustment edits while paused rebuild the plan and clamp this position.")
         self.timeline.sliderPressed.connect(self._on_scrub_start)
         self.timeline.valueChanged.connect(self._on_timeline_value)
         self.timeline_label = QLabel("0 / 0")
-        self.timeline_label.setMinimumWidth(70)
+        self.timeline_label.setStyleSheet("font-size: 11px; color: #a0a3a8;")
         self.timeline_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         tl.addWidget(self.timeline, 1)
         tl.addWidget(self.timeline_label)
         self.body.addLayout(tl)
 
-        # ---- status line
-        self.status_label = QLabel("Load an image to begin.")
-        self.status_label.setStyleSheet("color: #a0a3a8; font-size: 11px;")
-        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.body.addWidget(self.status_label)
+        # ---- compact button row: transport/load on the left, zoom on the right
+        row = QHBoxLayout()
+        row.setSpacing(2)
+        row.setContentsMargins(0, 0, 0, 0)
+
+        def tool(text, slot, font_px=14):
+            b = QToolButton(text=text)
+            b.setFixedSize(QSize(30, 24))
+            b.setStyleSheet(f'QToolButton {{ font-family: "Segoe UI Symbol", "Segoe UI Emoji"; font-size: {font_px}px; '
+                            f'background: #35383d; border: 1px solid #45484e; border-radius: 3px; padding: 0; }}'
+                            f'QToolButton:hover {{ background: #45484e; }} QToolButton:disabled {{ color: #6d7075; }}')
+            b.clicked.connect(slot)
+            row.addWidget(b)
+            return b
+
+        self.play_button = tool("▶", app.play_pause)
+        self.stop_button = tool("⏹", app.stop)
+        self.stop_button.setEnabled(False)
+        row.addSpacing(6)
+        self.file_button = tool("📁", lambda: app.load_file())
+        self.clip_button = tool("📋", app.load_clipboard)
+        row.addSpacing(6)
+        self.reset_crop_button = tool("⟲", app.reset_crop)
+        row.addStretch(1)
+        self.zoom_out_button = tool("−", self.editor.zoom_out, 16)
+        self.zoom_in_button = tool("+", self.editor.zoom_in, 16)
+        self.fit_button = tool("⊡", self.editor.reset_view, 16)
+        self.body.addLayout(row)
+
 
         # ---- wiring
         self._syncing = False
         app.source_changed.connect(self.editor.set_image)
         app.crop_changed.connect(self.editor.set_crop)
         app.output_changed.connect(self._on_output)
-        app.status.connect(self._on_status)
         app.drawer.progress.connect(self._on_progress)
         app.drawer.state_changed.connect(self._on_state)
         self.refresh_tooltips()
@@ -87,6 +88,9 @@ class InputPanel(FloatingPanel):
         self.file_button.setToolTip(hk.tooltip("load_file"))
         self.clip_button.setToolTip(hk.tooltip("load_clipboard"))
         self.reset_crop_button.setToolTip(hk.tooltip("reset_crop", "Reset crop to the whole image"))
+        self.zoom_out_button.setToolTip("Zoom out  (mouse wheel)")
+        self.zoom_in_button.setToolTip("Zoom in  (mouse wheel)")
+        self.fit_button.setToolTip("Fit image  (middle double-click or 0)")
         from core.hotkeys import pretty
         self.hide_action.setText(f"Hide this panel  (show again: {pretty(hk.key_for('toggle_panels'))})")
         self.editor.setToolTip("Drag handles to crop. Shift = keep aspect ratio, Alt = symmetric.\n"
@@ -138,7 +142,3 @@ class InputPanel(FloatingPanel):
         for w in (self.file_button, self.clip_button, self.reset_crop_button, self.settings_button):
             w.setEnabled(not running)
         self.editor.set_editable(not running)
-
-    def _on_status(self, message: str, is_error: bool):
-        self.status_label.setText(message)
-        self.status_label.setStyleSheet(f"color: {'#ff6b6b' if is_error else '#a0a3a8'}; font-size: 11px;")

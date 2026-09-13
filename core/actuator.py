@@ -17,6 +17,16 @@ def _settle_click(x, y, sleep):
     autoit.mouse_click()
 
 
+def _wait_modifiers_released(timeout: float = 3.0):
+    '''If Play was triggered by a Ctrl+Shift hotkey the keys may still be held; typing the
+    hex code then would send shifted characters ("#f8c8d8" -> "#F(C(D(").'''
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not any(keyboard.is_pressed(k) for k in ("ctrl", "shift", "alt", "windows")):
+            return
+        time.sleep(0.02)
+
+
 class ColorPicker:
     def __init__(self, settings: CalibrationModel):
         self.settings = settings
@@ -41,7 +51,10 @@ class ColorPicker:
     def write_color(self, color: str) -> None:
         x, y = self.settings.inputCord
         _settle_click(x, y, self.settings.get_frame_sleep_time())
-        keyboard.write(color)
+        _wait_modifiers_released()
+        print(f"[color] typing {color}")
+        # A small per-character delay keeps Roblox from dropping characters.
+        keyboard.write(color, delay=0.01)
 
     def close(self) -> None:
         x, y = self.settings.closeCord

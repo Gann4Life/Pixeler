@@ -37,6 +37,7 @@ class PixelerApp(QObject):
         self.color_picker = ColorPicker(self.calibration)
         self.pencil = PencilTool(self.calibration, self.color_picker)
         self.drawer = Drawer(self.pencil)
+        self.drawer.start_delay = self.state.start_delay
         self.drawer.error.connect(lambda m: self.status.emit(m, True))
         self.drawer.finished.connect(self._on_finished)
 
@@ -150,7 +151,6 @@ class PixelerApp(QObject):
             self._error("Calibrate the screen first (⚙ → Calibrate).")
             return
         self.drawer.play()
-        self.status.emit("Drawing…", False)
 
     def stop(self):
         if self.drawer.state != IDLE:
@@ -159,6 +159,11 @@ class PixelerApp(QObject):
 
     def seek(self, index: int):
         self.drawer.seek(index)
+
+    def set_start_delay(self, seconds: float):
+        self.state.start_delay = max(0.0, float(seconds))
+        self.drawer.start_delay = self.state.start_delay
+        self.state.save()
 
     def _on_finished(self, completed: bool):
         self.status.emit("Drawing complete!" if completed else "Stopped.", False)

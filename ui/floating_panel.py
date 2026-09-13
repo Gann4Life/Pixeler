@@ -57,13 +57,13 @@ QGroupBox::title { subcontrol-origin: margin; left: 8px; }
 class FloatingPanel(QWidget):
     quit_requested = Signal()
 
-    def __init__(self, name: str, title: str, state: UiState, parent=None):
+    def __init__(self, name: str, title: str, state: UiState, parent=None, min_size=(240, 200)):
         super().__init__(parent)
         self.panel_name = name
         self.state = state
         self.setObjectName("panelRoot")
         self.setWindowTitle(f"Pixeler — {title}")
-        self.setMinimumSize(240, 200)
+        self.setMinimumSize(*min_size)
         self.setMouseTracking(True)
         self.setStyleSheet(STYLE)
         self._apply_flags(self.state.panel(name).get("on_top", True))

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from ui.app import PixelerApp  # noqa: E402
 from ui.input_panel import InputPanel  # noqa: E402
 from ui.output_panel import OutputPanel  # noqa: E402
+from ui.status_panel import StatusPanel  # noqa: E402
 from ui.settings_dialog import SettingsDialog  # noqa: E402
 from ui.calibration_overlay import CalibrationOverlay  # noqa: E402
 
@@ -28,7 +29,8 @@ def main():
     app = PixelerApp()
     input_panel = InputPanel(app)
     output_panel = OutputPanel(app)
-    app.panels = [input_panel, output_panel]
+    status_panel = StatusPanel(app)
+    app.panels = [input_panel, output_panel, status_panel]
 
     overlay = {"w": None}
 
@@ -57,6 +59,7 @@ def main():
         dlg.calibrate_requested.connect(lambda: (dlg.reject(), open_calibration()))
         dlg.exec()
         input_panel.refresh_tooltips()
+        status_panel.refresh_hint()
         app.rebuild()
 
     input_panel.open_settings = open_settings
@@ -64,13 +67,15 @@ def main():
     def quit_app():
         app.shutdown()
         qapp.quit()
-    input_panel.quit_requested.connect(quit_app)
-    output_panel.quit_requested.connect(quit_app)
+    for p in app.panels:
+        p.quit_requested.connect(quit_app)
     qapp.aboutToQuit.connect(app.shutdown)
 
     # Each panel's ⋮ menu can bring the other one back if it was hidden.
-    for p, other in ((input_panel, output_panel), (output_panel, input_panel)):
-        p.add_menu_action(f"Show {other.title_label.text()} panel", other.show)
+    for p in app.panels:
+        for other in app.panels:
+            if other is not p:
+                p.add_menu_action(f"Show {other.title_label.text()} panel", other.show)
 
     # Always start with both panels visible; only geometry/opacity persist.
     for p in app.panels:

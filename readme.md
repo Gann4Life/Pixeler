@@ -47,10 +47,19 @@ always shown on startup. Positions, sizes and opacity are remembered in
   centered square of your selection is what gets drawn (dashed outline) — the
   image is never stretched.
 * **▶ / ⏸** play or pause, **⏹** stop. **📁** load a file, **📋** paste from the
-  clipboard.
+  clipboard. **− + ⊡** zoom the view.
+* Play (and resume) is *armed*: Pixeler waits until no key is held, then waits
+  the **start delay** (Settings, default 1.5 s) before the first click — so the
+  hotkey that started it can never leak into the game.
 * The timeline slider scrubs through every pixel that will be drawn. Pause,
   drag it anywhere, press Play — drawing resumes from there.
 * **⚙** opens Settings (FPS, hotkeys, calibration).
+
+### Status
+
+A small third panel with two lines: what Pixeler is doing (image loaded,
+starting countdown, step progress, errors) and a hint with the hotkeys that
+make sense right now.
 
 ### Output
 

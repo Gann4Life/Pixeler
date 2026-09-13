@@ -1,19 +1,34 @@
 '''Worker that executes DrawSteps in the game. Owns play/pause/stop and reports
 progress through Qt signals (emitted from the worker thread, delivered on the
-UI thread via queued connections).'''
-import threading
+UI thread via queued connections).
 
+Every start and resume is "armed": the worker waits until no key is held (so a
+hotkey that triggered Play can't leak into the game) and then waits
+`start_delay` seconds before the first click.'''
+import threading
+import time
+
+import keyboard
 from PySide6.QtCore import QObject, Signal
 
 from .actuator import PencilTool
 from .audio import Audio
 
 IDLE, RUNNING, PAUSED = 'idle', 'running', 'paused'
+MODIFIERS = ("ctrl", "shift", "alt", "windows")
+
+
+def any_key_pressed() -> bool:
+    pressed = getattr(keyboard, "_pressed_events", None)
+    if isinstance(pressed, dict):
+        return bool(pressed)
+    return any(keyboard.is_pressed(k) for k in MODIFIERS)
 
 
 class Drawer(QObject):
     progress = Signal(int)        # number of steps completed (== index of the next step)
     state_changed = Signal(str)   # IDLE / RUNNING / PAUSED
+    message = Signal(str)         # human-readable progress ("Release all keys…", "Starting in 1.2s")
     finished = Signal(bool)       # True = reached the end, False = stopped early
     error = Signal(str)
 
@@ -22,6 +37,7 @@ class Drawer(QObject):
         self.pencil = pencil
         self.steps = []
         self.state = IDLE
+        self.start_delay = 1.5
         self._thread = None
         self._resume = threading.Event()
         self._stop = threading.Event()
@@ -83,14 +99,48 @@ class Drawer(QObject):
         return self._next_index
 
     # ---- worker thread -------------------------------------------------------
+    def _interrupted(self) -> bool:
+        '''True if the worker should leave the arming phase (stop or pause).'''
+        return self._stop.is_set() or not self._resume.is_set()
+
+    def _arm(self) -> bool:
+        '''Wait for all keys to be released, then for start_delay. Returns False if interrupted.'''
+        announced = False
+        while any_key_pressed():
+            if self._interrupted():
+                return False
+            if not announced:
+                self.message.emit("Release all keys to start…")
+                announced = True
+            time.sleep(0.03)
+        deadline = time.time() + max(0.0, self.start_delay)
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            if self._interrupted():
+                return False
+            if any_key_pressed():          # a key went down during the countdown: start over
+                return self._arm()
+            self.message.emit(f"Starting in {remaining:.1f}s — keep your hands off the keyboard")
+            time.sleep(min(0.1, remaining))
+        self.message.emit("Drawing…")
+        return True
+
     def _run(self):
         completed = False
+        armed = False
         try:
             while True:
                 if self._stop.is_set():
                     break
                 if not self._resume.is_set():
+                    armed = False
+                    self.message.emit("Paused.")
                     self._resume.wait()
+                    continue
+                if not armed:
+                    armed = self._arm()
                     continue
                 i = self._next_index
                 if i >= len(self.steps):
