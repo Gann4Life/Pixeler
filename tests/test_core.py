@@ -404,3 +404,94 @@ def test_dither_and_invert():
     inv = process(grad, NormRect(), Adjustments(invert=True))
     top, bottom = inv.getpixel((0, 0)), inv.getpixel((0, GRID - 1))
     assert top[0] > 200 and bottom[0] < 60                                  # ramp flipped
+
+
+# ---- artworks -----------------------------------------------------------------
+def _gradient(w=40, h=24):
+    img = Image.new("RGBA", (w, h))
+    img.putdata([(x * 6 % 256, y * 10 % 256, 90, 255) for y in range(h) for x in range(w)])
+    return img
+
+
+def _artwork():
+    from core import artwork as aw
+    return aw.Artwork(crop=NormRect(0.1, 0.2, 0.5, 0.5), adjustments=Adjustments(contrast=1.3, palette_limit=4),
+                      draw_method="spiral", draw_seed=77, color_order="dark_first",
+                      view={"zoom": 2.5, "pan": [12.0, -4.0]})
+
+
+def test_artwork_round_trip(tmp_path):
+    from core import artwork as aw
+    src, art = _gradient(), _artwork()
+    out = process(src, art.crop, art.adjustments)
+    info = aw.save_artwork("My cat: v2?", src, out, art, colors=3, steps=1024, root=str(tmp_path))
+    assert info.name == "My cat v2" and info.source_size == (40, 24) and info.colors == 3 and info.steps == 1024
+    assert [i.name for i in aw.list_artworks(str(tmp_path))] == ["My cat v2"]
+    assert aw.artwork_exists("My cat v2", str(tmp_path))
+    img, back = aw.load_artwork("My cat v2", str(tmp_path))
+    assert img.tobytes() == src.tobytes()
+    assert back.crop == art.crop and back.adjustments == art.adjustments
+    assert (back.draw_method, back.draw_seed, back.color_order) == ("spiral", 77, "dark_first")
+    assert back.view == {"zoom": 2.5, "pan": [12.0, -4.0]}
+    preview = aw.load_preview("My cat v2", str(tmp_path))
+    assert preview.size == (GRID, GRID) and preview.tobytes() == out.tobytes()
+    assert not (tmp_path / "My cat v2.tmp").exists()
+
+
+def test_artwork_rename_delete_and_bad_names(tmp_path):
+    from core import artwork as aw
+    import pytest
+    root = str(tmp_path)
+    aw.save_artwork("a", _gradient(), None, _artwork(), root=root)
+    aw.save_artwork("b", _gradient(), None, _artwork(), root=root)
+    assert aw.rename_artwork("a", "c", root) == "c"
+    assert sorted(i.name for i in aw.list_artworks(root)) == ["b", "c"]
+    with pytest.raises(FileExistsError):
+        aw.rename_artwork("c", "b", root)
+    aw.delete_artwork("b", root)
+    assert [i.name for i in aw.list_artworks(root)] == ["c"]
+    assert aw.load_preview("c", root) is None            # saved without an output
+    for bad in ("", "   ", '<>:"/?*|', "..."):
+        with pytest.raises(ValueError):
+            aw.safe_name(bad)
+    assert aw.safe_name("  hello   world  ") == "hello world"
+    assert len(aw.safe_name("x" * 200)) == aw.MAX_NAME
+    with pytest.raises(FileNotFoundError):
+        aw.load_artwork("nope", root)
+
+
+def test_artworks_list_newest_first_and_skips_broken(tmp_path):
+    from core import artwork as aw
+    root = str(tmp_path)
+    aw.save_artwork("old", _gradient(), None, _artwork(), root=root)
+    meta = tmp_path / "old" / aw.META
+    d = json.loads(meta.read_text())
+    d["saved_at"] -= 3600
+    meta.write_text(json.dumps(d))
+    aw.save_artwork("new", _gradient(), None, _artwork(), root=root)
+    (tmp_path / "broken").mkdir()
+    (tmp_path / "broken" / aw.META).write_text("{not json")
+    (tmp_path / "stray.tmp").mkdir()
+    assert [i.name for i in aw.list_artworks(root)] == ["new", "old"]
+    assert aw.list_artworks(str(tmp_path / "missing")) == []
+
+
+def test_artwork_from_dict_tolerates_garbage():
+    from core import artwork as aw
+    a = aw.Artwork.from_dict({"draw_method": "nope", "color_order": 3, "draw_seed": "x",
+                              "view": {"zoom": "big"}, "crop": None})
+    d = aw.Artwork()
+    assert (a.draw_method, a.color_order, a.draw_seed, a.view, a.crop) == \
+           (d.draw_method, d.color_order, 0, d.view, NormRect())
+    assert aw.Artwork.from_dict(None) == d
+
+
+def test_ui_state_remembers_last_artwork(tmp_path):
+    from core.state import UiState
+    st = UiState(str(tmp_path / "ui_state.json"))
+    assert st.remember_session and st.last_artwork == ""
+    st.remember_session, st.last_artwork = False, "My cat v2"
+    st.save()
+    st2 = UiState(st.filepath)
+    assert st2.load() and st2.remember_session is False and st2.last_artwork == "My cat v2"
+    assert st2.panel("artworks")["collapsed"] is True      # starts folded on a fresh install

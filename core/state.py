@@ -1,5 +1,5 @@
 '''Per-machine UI state (ui_state.json, gitignored): panel geometry and opacity,
-crop, adjustments, hotkey bindings and the output preview toggle.'''
+crop, adjustments, hotkey bindings, the output preview toggle and the last open artwork.'''
 import json
 import os
 
@@ -14,6 +14,8 @@ DEFAULT_PANELS = {
     "input":  {"x": 40,  "y": 60, "w": 360, "h": 420, "opacity": 1.0, "on_top": True},
     "output": {"x": 420, "y": 60, "w": 520, "h": 420, "opacity": 1.0, "on_top": True},
     "status": {"x": 40,  "y": 500, "w": 400, "h": 96, "opacity": 0.9, "on_top": True},
+    # starts folded: an empty list is not worth 480 px next to the game
+    "artworks": {"x": 960, "y": 60, "w": 300, "h": 480, "opacity": 1.0, "on_top": True, "collapsed": True},
 }
 
 
@@ -32,6 +34,8 @@ class UiState:
         self.speed = 1.0             # multiplier on the per-frame wait (1.0 = as FPS dictates)
         self.pen = PenSettings()
         self.last_image_dir = ""
+        self.remember_session = True   # reopen last_artwork on startup
+        self.last_artwork = ""         # name of the artwork that was open when we quit
 
     def panel(self, name: str) -> dict:
         return self.panels.setdefault(name, dict(DEFAULT_PANELS.get(name, DEFAULT_PANELS["input"])))
@@ -50,6 +54,8 @@ class UiState:
             "speed": self.speed,
             "pen": self.pen.to_dict(),
             "last_image_dir": self.last_image_dir,
+            "remember_session": self.remember_session,
+            "last_artwork": self.last_artwork,
         }
 
     def from_dict(self, d: dict):
@@ -75,6 +81,8 @@ class UiState:
             self.speed = 1.0
         self.pen = PenSettings.from_dict(d.get("pen"))
         self.last_image_dir = d.get("last_image_dir", "") or ""
+        self.remember_session = bool(d.get("remember_session", True))
+        self.last_artwork = str(d.get("last_artwork") or "")
 
     def load(self) -> bool:
         if not os.path.exists(self.filepath):

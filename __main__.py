@@ -1,5 +1,5 @@
-'''Pixeler entry point: two floating panels (Input / Output) that stay on top of
-the game, global hotkeys, and the calibration overlay. See docs/ui-rework.md.'''
+'''Pixeler entry point: the floating panels (Input / Output / Status / Artworks) that
+stay on top of the game, global hotkeys, and the calibration overlay. See docs/ui-rework.md.'''
 import os
 import sys
 
@@ -17,6 +17,7 @@ from ui.app import PixelerApp  # noqa: E402
 from ui.input_panel import InputPanel  # noqa: E402
 from ui.output_panel import OutputPanel  # noqa: E402
 from ui.status_panel import StatusPanel  # noqa: E402
+from ui.artworks_panel import ArtworksPanel  # noqa: E402
 from ui.settings_dialog import SettingsDialog  # noqa: E402
 from ui.calibration_overlay import CalibrationOverlay  # noqa: E402
 
@@ -30,7 +31,8 @@ def main():
     input_panel = InputPanel(app)
     output_panel = OutputPanel(app)
     status_panel = StatusPanel(app)
-    app.panels = [input_panel, output_panel, status_panel]
+    artworks_panel = ArtworksPanel(app)
+    app.panels = [input_panel, output_panel, status_panel, artworks_panel]
 
     overlay = {"w": None}
 
@@ -65,6 +67,8 @@ def main():
     input_panel.open_settings = open_settings
 
     def quit_app():
+        if not artworks_panel.confirm_close():   # unsaved work: Save / Don't save / Cancel
+            return
         app.shutdown()
         qapp.quit()
     for p in app.panels:
@@ -77,7 +81,7 @@ def main():
             if other is not p:
                 p.add_menu_action(f"Show {other.title_label.text()} panel", other.show)
 
-    # Always start with both panels visible; only geometry/opacity persist.
+    # Always start with every panel visible; only geometry/opacity/fold persist.
     for p in app.panels:
         p.show()
 
@@ -85,6 +89,8 @@ def main():
     app.rebuild()
     if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):   # `python . image.png`
         app.load_file(sys.argv[1])
+    elif app.state.remember_session and app.state.last_artwork:
+        app.load_artwork(app.state.last_artwork, quiet=True)   # gone? start empty, no fuss
     if not app.calibration.is_config_valid():
         app.status.emit("Not calibrated yet — open ⚙ to calibrate.", True)
     sys.exit(qapp.exec())

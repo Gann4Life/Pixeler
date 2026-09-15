@@ -25,6 +25,7 @@ def pil_to_qpixmap(img) -> QPixmap:
 
 class CropEditor(QWidget):
     crop_changed = Signal(object)   # NormRect, emitted on every drag update
+    view_changed = Signal(object)   # {"zoom", "pan"} after every zoom / pan / fit
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -56,6 +57,22 @@ class CropEditor(QWidget):
         self._zoom = 1.0
         self._pan = QPointF(0, 0)
         self.update()
+        self.view_changed.emit(self.view_state())
+
+    def view_state(self) -> dict:
+        '''Zoom relative to "fit" and the pan in widget pixels; what an artwork remembers.'''
+        return {"zoom": self._zoom, "pan": [self._pan.x(), self._pan.y()]}
+
+    def set_view_state(self, view: dict):
+        try:
+            self._zoom = max(1.0, min(self.MAX_ZOOM, float(view.get("zoom", 1.0))))
+            pan = view.get("pan") or [0, 0]
+            self._pan = QPointF(float(pan[0]), float(pan[1]))
+        except (TypeError, ValueError, IndexError, AttributeError):
+            self._zoom, self._pan = 1.0, QPointF(0, 0)
+        self._clamp_pan()    # the panel may be a different size than when this was saved
+        self.update()
+        self.view_changed.emit(self.view_state())
 
     def zoom_in(self):
         self._set_zoom(self._zoom * 1.25)
@@ -75,6 +92,7 @@ class CropEditor(QWidget):
         self._pan += QPointF((after.x() - before.x()) * s, (after.y() - before.y()) * s)
         self._clamp_pan()
         self.update()
+        self.view_changed.emit(self.view_state())
 
     def _clamp_pan(self):
         '''Keep the image covering the view: no panning when it fits, else stay within its edges.'''
@@ -224,6 +242,7 @@ class CropEditor(QWidget):
             self._pan = pan0 + (e.position() - start)
             self._clamp_pan()
             self.update()
+            self.view_changed.emit(self.view_state())
             return
         if not self._pixmap or not self._editable:
             return

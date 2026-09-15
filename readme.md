@@ -29,12 +29,14 @@ panels can stay on top of it.
 
 ## The panels
 
-Both panels are frameless, always on top, draggable by their title bar and
-resizable from any edge or corner. **⋮** opens per-panel options (opacity,
-always-on-top, reset position, show the other panel, hide this panel, quit).
-**✕** quits Pixeler. `Ctrl+Shift+H` hides/shows both panels. Both panels are
-always shown on startup. Positions, sizes and opacity are remembered in
-`ui_state.json`.
+Four panels — Input, Output, Status and Artworks — all frameless, always on
+top, draggable by their title bar and resizable from any edge or corner. The
+**▾** at the left of the title (or a double-click on the title) folds a panel
+down to its title bar; click again to unfold. **⋮** opens per-panel options
+(opacity, always-on-top, reset position, show another panel, hide this panel,
+quit). **✕** quits Pixeler. `Ctrl+Shift+H` hides/shows all panels. Every
+panel is shown on startup. Positions, sizes, opacity and the fold are
+remembered in `ui_state.json`.
 
 ### Input
 
@@ -90,6 +92,31 @@ make sense right now.
   roughly how long the drawing will take; hover it for the breakdown (cells,
   color changes, stroke delays). When a draw finishes the console prints
   `[timing] … ms/cell avg … over budget` so you can see what it really cost.
+
+### Artworks
+
+An *artwork* is one picture ready to draw: the source image plus everything
+that decides what gets drawn — crop, zoom, the Output adjustments, draw order
+(with its seed) and color order. Pen settings, Speed, FPS, hotkeys and panel
+positions are **not** part of it: they describe how *your machine* draws
+(they depend on the game's frame rate) and stay in `ui_state.json`.
+
+The Artworks panel starts folded; unfold it to see the list, newest first,
+with the selected artwork's 32×32 output as a preview.
+
+* **Save** asks for a name and stores the current image and settings as
+  `artworks/<name>/` (`source.png`, `artwork.json`, `preview.png`). Saving
+  over the open artwork just updates it; any other existing name asks first.
+* **Load** (or double-click) reopens an artwork: image, crop, zoom and Output
+  settings all come back. Not available while a drawing runs.
+* **Rename** (`F2`) edits the name in place; **Delete** (`Del`) asks once.
+* The open artwork is shown in bold. Loading a new file or clipboard image
+  makes the image "unsaved" again — the artwork on disk is untouched.
+* **Remember last session** (⚙ Settings, on by default) reopens the artwork
+  that was open when you quit. An image you never saved is not restored.
+* Quitting with unsaved work — an image that was never saved, or an open
+  artwork whose crop / adjustments / orders changed — asks whether to save
+  it first. Zooming and panning don't count as changes.
 
 ### Pen (⚙ Settings)
 

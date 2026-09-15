@@ -1,7 +1,7 @@
-'''Base class for the Input / Output panels: frameless, always on top, draggable
-by its title bar, resizable from every edge/corner, with a ⋮ menu (opacity,
-always-on-top, reset position, hide, quit). ✕ quits the app. Geometry is
-persisted to UiState.'''
+'''Base class for the floating panels: frameless, always on top, draggable by its
+title bar, resizable from every edge/corner, foldable down to the title bar (the ▾ at
+the left, or double-click the title), with a ⋮ menu (opacity, always-on-top, reset
+position, hide, quit). ✕ quits the app. Geometry and the fold are persisted to UiState.'''
 from PySide6.QtCore import Qt, QPoint, QRect, QTimer, QEvent, Signal
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QToolButton,
@@ -11,6 +11,8 @@ from core.state import UiState, DEFAULT_PANELS
 
 RESIZE_MARGIN = 6
 TITLE_HEIGHT = 26
+FOLDED_HEIGHT = TITLE_HEIGHT + 2 * RESIZE_MARGIN
+QWIDGETSIZE_MAX = 16777215
 
 STYLE = '''
 QWidget#panelRoot { background: #202225; border: 1px solid #3a3d42; }
@@ -51,6 +53,10 @@ QGraphicsView { background: #17181a; border: 1px solid #3a3d42; }
 QDialog { background: #202225; }
 QGroupBox { color: #e3e5e8; border: 1px solid #3a3d42; border-radius: 4px; margin-top: 8px; padding-top: 6px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; }
+QListWidget { background: #17181a; border: 1px solid #3a3d42; color: #e3e5e8; outline: none; }
+QListWidget::item { padding: 3px 6px; }
+QListWidget::item:selected { background: #5b8def; color: #ffffff; }
+QListWidget::item:hover:!selected { background: #2b2d31; }
 '''
 
 
@@ -79,6 +85,9 @@ class FloatingPanel(QWidget):
         tb = QHBoxLayout(self.title_bar)
         tb.setContentsMargins(0, 0, 2, 0)
         tb.setSpacing(0)
+        self.fold_button = QToolButton(text="▾", toolTip="Fold / unfold this panel  (or double-click the title)")
+        self.fold_button.clicked.connect(self.toggle_fold)
+        tb.addWidget(self.fold_button)
         self.title_label = QLabel(title, objectName="title")
         tb.addWidget(self.title_label)
         tb.addStretch(1)
@@ -106,6 +115,9 @@ class FloatingPanel(QWidget):
         self._drag_origin = None       # QPoint (global) when dragging the title bar
         self._drag_start_geo = None
         self._resize_edges = None      # set of 'l','r','t','b'
+        self.folded = False
+        self._unfolded_height = None   # what to grow back to (also what gets persisted while folded)
+        self._unfolded_min_height = self.minimumHeight()
         self._save_timer = QTimer(self, singleShot=True, interval=400)
         self._save_timer.timeout.connect(self._persist)
 
@@ -161,6 +173,30 @@ class FloatingPanel(QWidget):
         menu.addAction(quit_action)
         return menu
 
+    # ---- fold ---------------------------------------------------------------------------------
+    def toggle_fold(self):
+        self.set_folded(not self.folded)
+
+    def set_folded(self, folded: bool):
+        '''Folded = title bar only; the body and the height come back on unfold.'''
+        if folded == self.folded:
+            return
+        self.folded = folded
+        if folded:
+            self._unfolded_height = self.height()
+            self._unfolded_min_height = self.minimumHeight()
+            self.body_widget.hide()
+            self.setMinimumHeight(FOLDED_HEIGHT)
+            self.setFixedHeight(FOLDED_HEIGHT)
+        else:
+            self.setMaximumHeight(QWIDGETSIZE_MAX)
+            self.setMinimumHeight(self._unfolded_min_height)
+            self.body_widget.show()
+            self.resize(self.width(), max(self._unfolded_min_height, self._unfolded_height or 0))
+        self.fold_button.setText("▸" if folded else "▾")
+        self.state.panel(self.panel_name)["collapsed"] = folded
+        self._save_timer.start()
+
     # ---- flags / opacity ----------------------------------------------------------------
     def _apply_flags(self, on_top: bool):
         flags = Qt.Tool | Qt.FramelessWindowHint
@@ -189,9 +225,11 @@ class FloatingPanel(QWidget):
         rect = QRect(int(p["x"]), int(p["y"]), int(p["w"]), int(p["h"]))
         self.setGeometry(_clamp_to_screens(rect, self.minimumSize()))
         self.setWindowOpacity(float(p.get("opacity", 1.0)))
+        self.set_folded(bool(p.get("collapsed", False)))
 
     def reset_geometry(self):
         d = DEFAULT_PANELS[self.panel_name]
+        self.set_folded(False)
         self.setGeometry(QRect(d["x"], d["y"], d["w"], d["h"]))
         self.opacity_slider.setValue(100)
         self.on_top_action.setChecked(True)
@@ -206,7 +244,9 @@ class FloatingPanel(QWidget):
 
     def _persist(self):
         g = self.geometry()
-        self.state.panel(self.panel_name).update({"x": g.x(), "y": g.y(), "w": g.width(), "h": g.height()})
+        h = self._unfolded_height if self.folded and self._unfolded_height else g.height()
+        self.state.panel(self.panel_name).update({"x": g.x(), "y": g.y(), "w": g.width(), "h": h,
+                                                  "collapsed": self.folded})
         self.state.save()
 
     # ---- title-bar drag -----------------------------------------------------------------------
@@ -223,6 +263,10 @@ class FloatingPanel(QWidget):
             if e.type() == QEvent.MouseButtonRelease:
                 self._drag_origin = None
                 return True
+            if e.type() == QEvent.MouseButtonDblClick and e.button() == Qt.LeftButton:
+                self._drag_origin = None
+                self.toggle_fold()          # "shade", like a window manager
+                return True
         return super().eventFilter(obj, e)
 
     # ---- edge / corner resize ----------------------------------------------------------------
@@ -231,8 +275,9 @@ class FloatingPanel(QWidget):
         r = self.rect()
         if pos.x() <= RESIZE_MARGIN: edges.add('l')
         if pos.x() >= r.right() - RESIZE_MARGIN: edges.add('r')
-        if pos.y() <= RESIZE_MARGIN: edges.add('t')
-        if pos.y() >= r.bottom() - RESIZE_MARGIN: edges.add('b')
+        if not self.folded:                 # a folded panel has a fixed height
+            if pos.y() <= RESIZE_MARGIN: edges.add('t')
+            if pos.y() >= r.bottom() - RESIZE_MARGIN: edges.add('b')
         return edges
 
     @staticmethod

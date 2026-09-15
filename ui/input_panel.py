@@ -76,6 +76,9 @@ class InputPanel(FloatingPanel):
         self._syncing = False
         app.source_changed.connect(self.editor.set_image)
         app.crop_changed.connect(self.editor.set_crop)
+        self.editor.view_changed.connect(app.set_view)      # zoom/pan travel with the artwork
+        app.view_restored.connect(self.editor.set_view_state)
+        app.set_view(self.editor.view_state())
         app.output_changed.connect(self._on_output)
         app.drawer.progress.connect(self._on_progress)
         app.drawer.state_changed.connect(self._on_state)

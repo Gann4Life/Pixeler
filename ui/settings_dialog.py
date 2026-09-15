@@ -36,6 +36,11 @@ class SettingsDialog(QDialog):
         self.start_delay.setValue(app.state.start_delay)
         self.start_delay.setToolTip("After Play (or resume) Pixeler waits until no key is held, then this long, before the first click.")
         fps_row.addRow("Start delay", self.start_delay)
+        self.remember = QCheckBox("Reopen the last artwork on startup")
+        self.remember.setChecked(app.state.remember_session)
+        self.remember.setToolTip("On: the artwork that was open when you quit is loaded again next time.\n"
+                                 "An image that was never saved as an artwork is not restored.")
+        fps_row.addRow("Remember last session", self.remember)
         cl.addLayout(fps_row)
         self.cal_button = QPushButton("Calibrate canvas and color picker…")
         self.cal_button.clicked.connect(self._calibrate)
@@ -141,6 +146,7 @@ class SettingsDialog(QDialog):
     def accept(self):
         self._apply_fps()
         self.app.set_start_delay(self.start_delay.value())
+        self.app.set_remember_session(self.remember.isChecked())
         self.app.set_pen(PenSettings(
             hold_stroke=self.hold_stroke.isChecked(),
             pen_delay=self.pen_delay.value(),
