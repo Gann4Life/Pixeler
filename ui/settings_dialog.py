@@ -65,12 +65,18 @@ class SettingsDialog(QDialog):
         self.interpolate.setToolTip("Moves the cursor smoothly between cells. Looks natural, but a diagonal glide passes "
                                     "the corner shared by four cells and the game may paint a stray neighbour.")
         pl.addRow("", self.interpolate)
-        self.glide = QSpinBox(minimum=1, maximum=100)
-        self.glide.setValue(pen.glide)
-        self.glide.setToolTip("Glide speed: 1 = fastest, 100 = slowest (autoit's scale).")
-        self.glide.setEnabled(pen.interpolate)
-        self.interpolate.toggled.connect(self.glide.setEnabled)
-        pl.addRow("Glide speed", self.glide)
+        self.glide_steps = QSpinBox(minimum=1, maximum=16)
+        self.glide_steps.setValue(pen.glide_steps)
+        self.glide_steps.setToolTip("Number of intermediate points between cells when interpolating. The hops are "
+                                    "paced across the cell's frame, so more steps never slow the draw down.")
+        self.glide_steps.setEnabled(pen.interpolate)
+        self.interpolate.toggled.connect(self.glide_steps.setEnabled)
+        pl.addRow("Glide steps", self.glide_steps)
+        self.click_hold = QSpinBox(minimum=0, maximum=20, suffix=" ms")
+        self.click_hold.setValue(pen.click_hold)
+        self.click_hold.setToolTip("Milliseconds the button stays down during a click (1 ms is recommended for Roblox).\n"
+                                   "Only used when the button is not held across cells.")
+        pl.addRow("Click hold", self.click_hold)
         root.addWidget(pg)
 
         # ---- hotkeys
@@ -140,7 +146,8 @@ class SettingsDialog(QDialog):
             pen_delay=self.pen_delay.value(),
             color_delay=self.color_delay.value(),
             interpolate=self.interpolate.isChecked(),
-            glide=self.glide.value(),
+            glide_steps=self.glide_steps.value(),
+            click_hold=self.click_hold.value(),
         ))
         failed = []
         for action, cap in self.captures.items():

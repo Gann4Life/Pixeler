@@ -81,16 +81,29 @@ def stroke_breaks(steps: list) -> int:
     return n
 
 
-def estimate_seconds(steps: list, frame_sleep: float, pen=None) -> float:
-    '''Rough ETA. One frame per cell in every mode; each color change ~3 settle-clicks + typing.
-    With a held pen (`pen.hold_stroke`) each stroke adds the pen delay twice (down and up).'''
+def estimate_breakdown(steps: list, frame_sleep: float, pen=None) -> dict:
+    '''Rough ETA, split into where the time goes (seconds):
+      cells   — one frame per cell in every mode, but never less than the mode's physical floor
+                (`pen.cell_floor()`): below it Speed stops mattering and the draw takes longer
+                than the slider says.
+      colors  — each color change: 3 settle-clicks + typing the hex code + `pen.color_delay`.
+      strokes — with a held pen, every stroke pays `pen.pen_delay` twice (down and up).
+    `capped` says whether the cell time is sitting on the floor rather than the frame.'''
     if not steps:
-        return 0.0
+        return {"cells": 0.0, "colors": 0.0, "strokes": 0.0, "total": 0.0, "capped": False}
+    floor = pen.cell_floor() if pen is not None else 0.0
+    per_cell = max(frame_sleep, floor)
     n_colors = len(color_boundaries(steps))
-    per_color = 3 * (2 * frame_sleep + 0.005) + 0.15   # + typing the hex code
+    per_color = 3 * (2 * frame_sleep + min(0.005, frame_sleep)) + 0.15   # + typing the hex code
     if pen is not None:
         per_color += pen.color_delay
-    total = len(steps) * frame_sleep + n_colors * per_color
-    if pen is not None and pen.hold_stroke:
-        total += stroke_breaks(steps) * 2 * pen.pen_delay
-    return total
+    cells = len(steps) * per_cell
+    colors = n_colors * per_color
+    strokes = stroke_breaks(steps) * 2 * pen.pen_delay if pen is not None and pen.hold_stroke else 0.0
+    return {"cells": cells, "colors": colors, "strokes": strokes,
+            "total": cells + colors + strokes, "capped": frame_sleep < floor}
+
+
+def estimate_seconds(steps: list, frame_sleep: float, pen=None) -> float:
+    '''Rough ETA; see estimate_breakdown for the parts.'''
+    return estimate_breakdown(steps, frame_sleep, pen)["total"]

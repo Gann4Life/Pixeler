@@ -10,7 +10,7 @@ from core.drawer import RUNNING
 from core.order import METHODS, COLOR_ORDERS, is_random
 from core.pipeline import Adjustments
 from core.state import SPEED_MIN, SPEED_MAX
-from core.plan import render_progress, color_boundaries, estimate_seconds
+from core.plan import render_progress, color_boundaries, estimate_breakdown
 from .app import PixelerApp
 from .crop_editor import pil_to_qpixmap
 from .floating_panel import FloatingPanel
@@ -207,7 +207,10 @@ class OutputPanel(FloatingPanel):
         # ---- speed: multiplier on the per-frame wait; can be changed while drawing
         self.speed = QSlider(Qt.Horizontal, minimum=int(SPEED_MIN * 100), maximum=int(SPEED_MAX * 100))
         self.speed.setToolTip("Multiplier on the wait between inputs (base = 1.2 frames at the FPS from Settings).\n"
-                              "Higher is faster; too high and the game starts dropping clicks. Works while drawing.")
+                              "Applies to every pen mode, including interpolated moves. Higher is faster; too high and "
+                              "the game starts dropping clicks.\nOnce a frame gets shorter than the physical cost of a "
+                              "cell the stats line says \"capped\" — past that point the slider does nothing.\n"
+                              "Works while drawing.")
         srow = QHBoxLayout()
         srow.setSpacing(4)
         self.speed_label = QLabel("1.00×")
@@ -407,9 +410,24 @@ class OutputPanel(FloatingPanel):
             self.stats.setText("—")
             return
         n_colors = len(color_boundaries(steps))
-        eta = estimate_seconds(steps, self.app.calibration.get_frame_sleep_time(), self.app.pencil.pen)
-        m, s = divmod(int(eta), 60)
-        self.stats.setText(f"{n_colors} colors · {len(steps)} steps · ~{m}m {s:02d}s")
+        cal, pen = self.app.calibration, self.app.pencil.pen
+        frame = cal.get_frame_sleep_time()
+        eta = estimate_breakdown(steps, frame, pen)
+        m, s = divmod(int(eta["total"]), 60)
+        text = f"{n_colors} colors · {len(steps)} steps · ~{m}m {s:02d}s"
+        tip = (f"Cells: {eta['cells']:.0f}s ({max(frame, pen.cell_floor()) * 1000:.1f} ms each)\n"
+               f"Color changes: {eta['colors']:.0f}s\n"
+               f"Stroke delays: {eta['strokes']:.0f}s")
+        if eta["capped"]:
+            # Speed can't push a cell below the work it physically takes; say so instead of lying.
+            floor = pen.cell_floor()
+            cap = 1.2 / (max(1, cal.fps or 60) * floor)
+            text += f" · ⚠ Speed capped (floor ~{floor * 1000:.1f} ms)"
+            tip += (f"\n\nSpeed capped: at {cal.fps} FPS a frame is {frame * 1000:.1f} ms but a cell in this pen mode "
+                    f"costs ~{floor * 1000:.1f} ms. Anything above {cap:.2f}× draws no faster.")
+        self.stats.setText(text)
+        self.stats.setToolTip(tip)
+        self.stats.setStyleSheet(f"color: {'#ffb347' if eta['capped'] else '#a0a3a8'}; font-size: 11px;")
 
     def _on_progress(self, index: int):
         self._index = index

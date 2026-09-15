@@ -5,10 +5,10 @@ import os
 import random
 
 from PIL import Image, ImageGrab, UnidentifiedImageError
-from PySide6.QtCore import QObject, Signal, Qt
+from PySide6.QtCore import QObject, QTimer, Signal, Qt
 from PySide6.QtWidgets import QFileDialog, QApplication
 
-from core.actuator import ColorPicker, PencilTool, PenSettings
+from core.actuator import ColorPicker, PencilTool, PenSettings, tune_autoit
 from core.audio import Audio
 from core.calibration import CalibrationModel
 from core.drawer import Drawer, IDLE, RUNNING
@@ -44,6 +44,7 @@ class PixelerApp(QObject):
 
         self.color_picker = ColorPicker(self.calibration)
         self.pencil = PencilTool(self.calibration, self.color_picker, self.state.pen)
+        tune_autoit(self.state.pen.click_hold)   # AutoIt's 10+10 ms per click dwarfs a frame
         self.drawer = Drawer(self.pencil)
         self.drawer.start_delay = self.state.start_delay
         self.drawer.error.connect(lambda m: self.status.emit(m, True))
@@ -51,6 +52,8 @@ class PixelerApp(QObject):
 
         self.hotkeys = HotkeyManager(self.state.hotkeys)
         self.hotkeys.triggered.connect(self._on_hotkey)
+        self._speed_save = QTimer(self, singleShot=True, interval=400)
+        self._speed_save.timeout.connect(self.state.save)
 
         self.source = None
         self.crop = self.state.crop
@@ -162,15 +165,18 @@ class PixelerApp(QObject):
         self.state.save()
 
     def set_speed(self, speed: float):
-        '''Live: the pencil reads the frame wait on every input, so this applies mid-draw.'''
+        '''Live: the pencil reads the frame wait on every input, so this applies mid-draw.
+        The save is debounced — dragging the slider would otherwise rewrite ui_state.json a
+        few hundred times, on the UI thread, while the worker is chasing millisecond frames.'''
         self.state.speed = min(SPEED_MAX, max(SPEED_MIN, float(speed)))
         self.calibration.speed = self.state.speed
         self.speed_changed.emit(self.state.speed)
-        self.state.save()
+        self._speed_save.start(400)
 
     def set_pen(self, pen: PenSettings):
         self.state.pen = pen
         self.pencil.pen = pen
+        tune_autoit(pen.click_hold)
         self.pen_changed.emit(pen)
         self.state.save()
 

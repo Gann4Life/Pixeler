@@ -78,12 +78,18 @@ make sense right now.
   classic) or reversed, dark → light, light → dark, biggest area first,
   smallest area first, rainbow (grays, then by hue) and random (🎲).
 * **Speed** — multiplier on the wait between inputs (the base comes from the
-  FPS in Settings). Can be changed while drawing; the ETA follows it.
+  FPS in Settings). Applies to every pen mode. Can be changed while drawing;
+  the ETA follows it. A cell can't be faster than the inputs it physically
+  needs (~1 ms held, ~6 ms click-per-cell): past that point the status line
+  turns orange and says **Speed capped**, and pushing the slider further
+  changes nothing.
 * **Show final result** on: preview the finished picture. Off: only the pixels
   placed so far are shown, following the timeline. Click-dragging the timeline
   always previews the progress, whatever the toggle says.
 * The status line shows how many colors (= color picker trips), steps and
-  roughly how long the drawing will take.
+  roughly how long the drawing will take; hover it for the breakdown (cells,
+  color changes, stroke delays). When a draw finishes the console prints
+  `[timing] … ms/cell avg … over budget` so you can see what it really cost.
 
 ### Pen (⚙ Settings)
 
@@ -98,11 +104,16 @@ options below only change *how* the cursor gets there.
   so both modes draw at the same rate.
 * **Pen up/down delay** (default 0) and **Color change delay**: extra waits,
   paid per stroke / per color, never per cell.
-* **Interpolate movement** (default off): glide the cursor between cells at
-  the chosen speed instead of teleporting. The glide runs inside the cell's
-  frame, so it only slows the draw when it takes longer than a frame. A
+* **Interpolate movement** (default off): walk the cursor between cells in
+  **Glide steps** (default 4) instant hops instead of one teleport. The hops
+  are spread evenly across the cell's frame, so a glided cell costs exactly
+  one frame like any other and follows the Speed slider; when the frame is
+  too short for that many hops, hops are dropped rather than time added. A
   diagonal glide crosses the corner shared by four cells, so the game can
   paint a stray neighbour — keep it off for pixel-perfect results.
+* **Click hold** (default 1 ms): how long the button stays down inside a
+  click in click-per-cell mode. AutoIt's stock 10 + 10 ms per click is what
+  used to pin that mode at ~80 ms per cell regardless of Speed.
 * Pause and Stop always lift the pen.
 
 ## Hotkeys

@@ -236,13 +236,20 @@ def test_pen_holds_across_neighbours_and_lifts_on_jumps_and_colors(monkeypatch):
 
 
 def test_pen_legacy_clicks_and_glide(monkeypatch):
-    pencil, fake, DrawStep = _pencil(monkeypatch, hold_stroke=False, interpolate=True, glide=7)
+    pencil, fake, DrawStep = _pencil(monkeypatch, hold_stroke=False, interpolate=True, glide_steps=4)
     pencil.draw_step(DrawStep(0, "#ff0000", 0, 0))
     pencil.draw_step(DrawStep(1, "#ff0000", 1, 0))
     kinds = [e[0] for e in fake.log]
     assert kinds.count("click") == 8 and "down" not in kinds
-    glides = [e for e in fake.log if e[0] == "move" and e[3] == 7]
-    assert len(glides) == 2 and glides[0][1:3] == (5, 5) and glides[1][1:3] == (15, 5)   # one glide per cell
+    # AutoIt's own paced move is never used (it blocks for ~100 ms): every move is a teleport...
+    assert all(e[3] == 0 for e in fake.log if e[0] == "move")
+    # ...and a glide is our own hops between the two cell centres, ending on the target.
+    clicks = [i for i, e in enumerate(fake.log) if e[0] == "click"]
+    hops = [e[1:3] for e in fake.log[clicks[3] + 1:clicks[4]] if e[0] == "move"]
+    assert len(hops) == 4 and hops[-1] == (15, 5)
+    assert [x for x, _ in hops] == sorted(x for x, _ in hops) and all(5 < x <= 15 and y == 5 for x, y in hops)
+    first = [e[1:3] for e in fake.log[:clicks[0]] if e[0] == "move"]
+    assert first == [(5, 5)]                                           # nothing to glide from: teleport
     pencil.pen_up()                                                    # nothing held: no-op
     assert "up" not in [e[0] for e in fake.log]
 
@@ -262,39 +269,106 @@ def test_stroke_eta_counts_strokes():
     assert quick < estimate_seconds(steps, 0.02, PenSettings(pen_delay=0.0, color_delay=1.0))
 
 
-def test_pen_modes_cost_one_frame_per_cell(monkeypatch):
-    """Wall-clock parity: hold on/off and glide/teleport all take one frame per cell."""
+PEN_MODES = (dict(hold_stroke=False), dict(hold_stroke=True), dict(hold_stroke=False, interpolate=True),
+             dict(hold_stroke=True, interpolate=True))
+
+
+def _clocked_pencil(monkeypatch, fps, speed=1.0):
+    '''A PencilTool on a fake clock where every AutoIt primitive costs what it was measured to
+    cost (scratchpad/bench_timing.py), so a mode that can't fit its work in a frame shows up
+    as an overrun instead of passing by construction.'''
     import core.actuator as act
-    from core.plan import DrawStep
     clock = {"t": 0.0}
     monkeypatch.setattr(act.time, "perf_counter", lambda: clock["t"])
-
-    def sleep(dt):
-        clock["t"] += dt
-
-    class SlowAutoit(FakeAutoit):
-        def mouse_move(self, x, y, speed=0):
-            super().mouse_move(x, y, speed)
-            if speed:
-                clock["t"] += 0.008                      # a glide takes time
-    monkeypatch.setattr(act, "autoit", SlowAutoit())
-    monkeypatch.setattr(act.time, "sleep", sleep)
+    monkeypatch.setattr(act.time, "sleep", lambda dt: clock.__setitem__("t", clock["t"] + max(0.0, dt)))
     m = CalibrationModel()
-    m.area, m.fps = (0.0, 0.0, 320.0), 50                # frame = 24 ms
+    m.area, m.fps, m.speed = (0.0, 0.0, 320.0), fps, speed
     m.colorCord, m.inputCord, m.closeCord = [1, 1], [2, 2], [3, 3]
     picker = act.ColorPicker(m)
     monkeypatch.setattr(picker, "pick", lambda color: setattr(picker, "current_color", color))
-    row = [DrawStep(i, "#ff0000", i, 0) for i in range(10)] + [DrawStep(10, "#ff0000", 20, 0)]   # a stroke + a jump
-    frame = m.get_frame_sleep_time()
-    for kw in (dict(hold_stroke=False), dict(hold_stroke=True), dict(hold_stroke=False, interpolate=True),
-               dict(hold_stroke=True, interpolate=True)):
+
+    class CostedAutoit(FakeAutoit):
+        pen = None
+
+        def mouse_move(self, x, y, speed=0):
+            super().mouse_move(x, y, speed)
+            clock["t"] += act.MOVE_COST
+
+        def mouse_down(self, b="left"):
+            super().mouse_down(b)
+            clock["t"] += act.PRESS_COST
+
+        def mouse_up(self, b="left"):
+            super().mouse_up(b)
+            clock["t"] += act.PRESS_COST
+
+        def mouse_click(self, *a):
+            super().mouse_click(*a)
+            clock["t"] += self.pen.click_cost
+    fake = CostedAutoit()
+    monkeypatch.setattr(act, "autoit", fake)
+
+    def make(**kw):
         pencil = act.PencilTool(m, picker, act.PenSettings(color_delay=0.0, **kw))
+        fake.pen = pencil.pen
         picker.reset()
+        return pencil
+    return make, clock, m
+
+
+def test_pen_modes_cost_one_frame_per_cell(monkeypatch):
+    """Wall-clock parity: hold on/off and glide/teleport all take one frame per cell, at frame
+    budgets that leave room for the work (24 ms and 15 ms)."""
+    from core.plan import DrawStep
+    row = [DrawStep(i, "#ff0000", i, 0) for i in range(10)] + [DrawStep(10, "#ff0000", 20, 0)]   # a stroke + a jump
+    for fps in (50, 80):
+        make, clock, m = _clocked_pencil(monkeypatch, fps)
+        frame = m.get_frame_sleep_time()
+        for kw in PEN_MODES:
+            pencil = make(**kw)
+            assert frame > pencil.cell_floor(), (fps, kw)
+            t0 = clock["t"]
+            for st in row:
+                pencil.draw_step(st)
+            # the only work outside a cell's stopwatch is the pen lift before a jump
+            assert abs((clock["t"] - t0) - len(row) * frame) < 1e-3, (fps, kw)
+            assert pencil.stats.cells == len(row) and pencil.stats.overruns == 0, (fps, kw)
+            pencil.pen_up()
+
+
+def test_pen_reports_overruns_below_floor(monkeypatch):
+    """Speed pushed past what a cell physically costs: the pencil can't keep up, and says so."""
+    from core.plan import DrawStep
+    row = [DrawStep(i, "#ff0000", i, 0) for i in range(6)]
+    make, clock, m = _clocked_pencil(monkeypatch, fps=240, speed=10.0)   # frame = 0.5 ms
+    for kw in (dict(hold_stroke=False), dict(hold_stroke=True, interpolate=True, glide_steps=16)):
+        pencil = make(**kw)
+        assert m.get_frame_sleep_time() < pencil.cell_floor(), kw
         t0 = clock["t"]
         for st in row:
             pencil.draw_step(st)
-        assert abs((clock["t"] - t0) - len(row) * frame) < 1e-9, kw
+        assert pencil.stats.overruns > 0 and "over budget" in pencil.stats.summary(), kw
+        assert clock["t"] - t0 > len(row) * m.get_frame_sleep_time(), kw
         pencil.pen_up()
+    # a glide sheds hops to fit a tight budget instead of blowing it: every move is still a teleport
+    # and a cell mid-stroke (one move) never overruns, only the stroke start does
+    assert pencil.stats.overruns == 1
+
+
+def test_eta_never_promises_less_than_the_floor():
+    from core.actuator import PenSettings
+    from core.plan import estimate_breakdown
+    steps = build_plan(_shape_image())
+    pen = PenSettings(hold_stroke=False, color_delay=0.0)
+    slow = estimate_breakdown(steps, 0.02, pen)
+    capped = estimate_breakdown(steps, 0.0001, pen)
+    assert not slow["capped"] and capped["capped"]
+    assert abs(slow["cells"] - len(steps) * 0.02) < 1e-9
+    assert abs(capped["cells"] - len(steps) * pen.cell_floor()) < 1e-9
+    assert abs(slow["total"] - sum(slow[k] for k in ("cells", "colors", "strokes"))) < 1e-9
+    assert PenSettings(hold_stroke=False).cell_floor() > PenSettings(hold_stroke=True).cell_floor()
+    assert PenSettings(hold_stroke=False, click_hold=5).cell_floor() > PenSettings(hold_stroke=False, click_hold=1).cell_floor()
+    assert PenSettings(interpolate=True, glide_steps=16).cell_floor() == PenSettings().cell_floor()   # hops are shed, not paid
 
 
 def test_color_orders():

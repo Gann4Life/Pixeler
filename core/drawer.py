@@ -173,6 +173,13 @@ class Drawer(QObject):
                 self.pencil.pen_up()
             except Exception as e:  # noqa: BLE001
                 print(f"[pen] could not release the button: {e}")
+            stats = self.pencil.stats
+            if stats.cells:
+                target = self.pencil.settings.get_frame_sleep_time() * 1000
+                print(f"[timing] {stats.summary()} (budget {target:.1f} ms/cell)")
+                if stats.overruns > stats.cells * 0.1:
+                    print("[timing] the frame budget is below what this pen mode costs - "
+                          "Speed is capped; lower FPS, raise Speed less, or simplify the pen settings")
             if completed:
                 Audio.play_ding()
             self._next_index = 0          # Stop / done -> timeline back to the start
