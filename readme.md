@@ -1,92 +1,189 @@
-# Pixeler Tutorial (Install - Use)
+# Pixeler
 
-_This is the detailed tutorial, so follow it carefully and if something goes wrong check this tutorial again._
+Draws pixel art for you in Roblox *Starving Artists*: load an image, crop and
+tweak it in two small floating panels that stay on top of the game, press
+Play, and Pixeler clicks every pixel on the 32×32 canvas.
 
-## Prequisites
-* Python 3.10, download it from [Here](https://www.python.org/downloads/) and make sure to add it to your path.
+## Prerequisites
 
-Or by using winget:
+* Python 3.10, from [python.org](https://www.python.org/downloads/) (tick *Add to PATH*), or:
+
 ```powershell
 winget install --id Python.Python.3.10
 ```
-> How to use winget? *Open a PowerShell console and paste that command.*
 
-## Installation
+## Install
 
-Downlaod .Zip file from GitHub, or from [Here](https://github.com/Gann4Life/Pixeler/archive/refs/heads/main.zip)
-and extract it.
-
-![image](https://github.com/user-attachments/assets/dfa8a6cc-aacb-4654-bb25-e0814613261d)
-
-Or if you already have [Git](https://git-scm.com/downloads) installed, use this command in terminal:
+Download the [zip](https://github.com/Gann4Life/Pixeler/archive/refs/heads/main.zip) and extract it, or:
 
 ```bash
 git clone https://github.com/Gann4Life/Pixeler
 ```
 
-> Don't have git? Install it with winget `winget install --id Git.Git` :3
+Run `start.bat`. The first run creates a virtual environment in `.venv` and
+installs the requirements (PySide6, Pillow, keyboard, PyAutoIt, playsound);
+afterwards it just starts the app.
 
-## Setup
-Run `start.bat` to start the program, it will set up a virtual environmennt located at `.\.venv` and install required packages in it, this will happen only once.
-Once it finishes, the program will start.
+Roblox must run **windowed or borderless** (not exclusive fullscreen) so the
+panels can stay on top of it.
 
-### Calibration
+## The panels
 
-When you go into calibration mode, you will see this:
+Four panels — Input, Output, Status and Artworks — all frameless, always on
+top, draggable by their title bar and resizable from any edge or corner. The
+**▾** at the left of the title (or a double-click on the title) folds a panel
+down to its title bar; click again to unfold. **⋮** opens per-panel options
+(opacity, always-on-top, reset position, show another panel, hide this panel,
+quit). **✕** quits Pixeler. `Ctrl+Shift+H` hides/shows all panels. Every
+panel is shown on startup. Positions, sizes, opacity and the fold are
+remembered in `ui_state.json`.
 
-![image2](https://github.com/user-attachments/assets/ed3d4082-b066-4a11-8ac2-a41446e1d77e)
+### Input
 
-Go into Starving Artists game and open Drawing Panel.
+* Shows the source image. Drag the handles to crop; **Shift** keeps the
+  aspect ratio, **Alt** resizes symmetrically; drag inside to move; drag on
+  the empty area to start a new crop. **⟲ crop** resets to the whole image.
+  Mouse wheel zooms, middle/right-drag pans, middle double-click (or `0`)
+  fits the image again.
+  The crop is kept when you load another image. The canvas is square, so the
+  centered square of your selection is what gets drawn (dashed outline) — the
+  image is never stretched.
+* **▶ / ⏸** play or pause, **⏹** stop. **📁** load a file, **📋** paste from the
+  clipboard. **− + ⊡** zoom the view.
+* Play (and resume) is *armed*: Pixeler waits until no key is held, then waits
+  the **start delay** (Settings, default 1.5 s) before the first click — so the
+  hotkey that started it can never leak into the game.
+* The timeline slider scrubs through every pixel that will be drawn. Pause,
+  drag it anywhere, press Play — drawing resumes from there.
+* **⚙** opens Settings (FPS, hotkeys, calibration).
 
-By pressing `F` Key, you will add your current mouse position as one of the pixels from drawing panel in Starving Artists.
-One by one, You have to point your mouse to pixel on the grid and hit `F`, after you hear a _pop_ sound, move on to the next.
+### Status
 
-Here is how you should do it:
+A small third panel with two lines: what Pixeler is doing (image loaded,
+starting countdown, step progress, errors) and a hint with the hotkeys that
+make sense right now.
 
-![RobloxScreenShot20240809_024936282](https://github.com/user-attachments/assets/fa5e4cdf-57aa-4f1d-b2b6-a18777138f51)
+### Output
 
-**First** you go from Left to Right adding all 32 pixels on the list.
+* Preview of the processed 32×32 result.
+* Palette limit, dither (only visible with a limited palette), invert colors
+  (negative), brightness, contrast, saturation, gamma and alpha cutoff — every
+  change updates the preview instantly.
+* **Draw order** — how the pixels of each color are sequenced (colors are
+  always drawn one after another, since switching costs a color picker trip):
+  *Horizontal* / *Vertical* (printer scans), *Diagonal*, *Spiral* (outer ring
+  inwards), *Trace* (outline of each shape first, then the inside, like a
+  robot tracing), *Maze* (starts at a random cell and carves a winding path,
+  backtracking when stuck) and *Scatter* (random). 🎲 rerolls the random ones.
+  Scrub the timeline to watch any order play out in the preview.
+* **Color order** — in which order the colors are picked: hex code (the
+  classic) or reversed, dark → light, light → dark, biggest area first,
+  smallest area first, rainbow (grays, then by hue) and random (🎲).
+* **Speed** — multiplier on the wait between inputs (the base comes from the
+  FPS in Settings). Applies to every pen mode. Can be changed while drawing;
+  the ETA follows it. A cell can't be faster than the inputs it physically
+  needs (~1 ms held, ~6 ms click-per-cell): past that point the status line
+  turns orange and says **Speed capped**, and pushing the slider further
+  changes nothing.
+* **Show final result** on: preview the finished picture. Off: only the pixels
+  placed so far are shown, following the timeline. Click-dragging the timeline
+  always previews the progress, whatever the toggle says.
+* The status line shows how many colors (= color picker trips), steps and
+  roughly how long the drawing will take; hover it for the breakdown (cells,
+  color changes, stroke delays). When a draw finishes the console prints
+  `[timing] … ms/cell avg … over budget` so you can see what it really cost.
 
-**Then** you go from Top to Bottom adding all 32 pixels on the list.
+### Artworks
 
-_If you listen carefully, while adding pixels, Horizontal and Vertical pixels have different sound effects_
+An *artwork* is one picture ready to draw: the source image plus everything
+that decides what gets drawn — crop, zoom, the Output adjustments, draw order
+(with its seed) and color order. Pen settings, Speed, FPS, hotkeys and panel
+positions are **not** part of it: they describe how *your machine* draws
+(they depend on the game's frame rate) and stay in `ui_state.json`.
 
-When you're done you should hear _ding_ sound.
+The Artworks panel starts folded; unfold it to see the list, newest first,
+with the selected artwork's 32×32 output as a preview.
 
-After that, By pressing `T` Key, add Color Selector Button do the list.
+* **Save** asks for a name and stores the current image and settings as
+  `artworks/<name>/` (`source.png`, `artwork.json`, `preview.png`). Saving
+  over the open artwork just updates it; any other existing name asks first.
+* **Load** (or double-click) reopens an artwork: image, crop, zoom and Output
+  settings all come back. Not available while a drawing runs.
+* **Rename** (`F2`) edits the name in place; **Delete** (`Del`) asks once.
+* The open artwork is shown in bold. Loading a new file or clipboard image
+  makes the image "unsaved" again — the artwork on disk is untouched.
+* **Remember last session** (⚙ Settings, on by default) reopens the artwork
+  that was open when you quit. An image you never saved is not restored.
+* Quitting with unsaved work — an image that was never saved, or an open
+  artwork whose crop / adjustments / orders changed — asks whether to save
+  it first. Zooming and panning don't count as changes.
 
-![RobloxScreeddnShot20240809_024936282](https://github.com/user-attachments/assets/04bb4299-355e-4d8b-a969-a38b968626d9)
+### Pen (⚙ Settings)
 
-By pressing `Y` Key, add Input area to the list.
+Every cell costs exactly one frame (1.2 / FPS ÷ Speed) in every mode; the
+options below only change *how* the cursor gets there.
 
-![imag3e](https://github.com/user-attachments/assets/21321ce9-c9a8-400e-814a-4ef97cb85c89)
+* **Hold the button across neighbouring cells** (default on): the pen goes
+  down on the first cell of a stroke and stays down while the next step
+  touches the current cell in any of the 8 directions. A jump or a color
+  change lifts it. Off = the original click-per-cell. A stroke start presses
+  at the end of its frame, exactly where the click of the original mode lands,
+  so both modes draw at the same rate.
+* **Pen up/down delay** (default 0) and **Color change delay**: extra waits,
+  paid per stroke / per color, never per cell.
+* **Interpolate movement** (default off): walk the cursor between cells in
+  **Glide steps** (default 4) instant hops instead of one teleport. The hops
+  are spread evenly across the cell's frame, so a glided cell costs exactly
+  one frame like any other and follows the Speed slider; when the frame is
+  too short for that many hops, hops are dropped rather than time added. A
+  diagonal glide crosses the corner shared by four cells, so the game can
+  paint a stray neighbour — keep it off for pixel-perfect results.
+* **Click hold** (default 1 ms): how long the button stays down inside a
+  click in click-per-cell mode. AutoIt's stock 10 + 10 ms per click is what
+  used to pin that mode at ~80 ms per cell regardless of Speed.
+* Pause and Stop always lift the pen.
 
-By pressing `U` Key, add Close Button to the list.
+## Hotkeys
 
-![imag2e](https://github.com/user-attachments/assets/da16f7f1-3e3b-4bb9-8f13-6490fc837bc0)
+Global — they work while Roblox has focus — and built on `Ctrl+Shift` so they
+never type into chat, on keys Roblox ignores (Space would make your avatar
+jump, I/O zoom the camera). All rebindable in **⚙ Settings**, which warns if
+you pick a key the game reacts to.
 
-Now when you're done, press `G` to save changes into config.json. You should see something like This:
+| Action | Default |
+|---|---|
+| Play / Pause | `Ctrl+Shift+P` |
+| Stop | `Ctrl+Shift+X` |
+| Load image file | `Ctrl+Shift+L` |
+| Load from clipboard | `Ctrl+Shift+V` |
+| Reset crop | `Ctrl+Shift+R` |
+| Show / hide panels | `Ctrl+Shift+H` |
 
-![imag4e](https://github.com/user-attachments/assets/51a62b1c-bdd0-4d77-bbb8-b99dad6f3087)
+## Calibration
 
-Once you left calibration mode and changes were saved, move to the second option `Begin Drawing`.
+Open the drawing panel in Starving Artists, then **⚙ → Calibrate**. A
+translucent overlay covers the screen:
 
-### Draw Mode
+1. Drag a square over the game's canvas. It is always square and shows a red
+   dot where every one of the 32×32 pixels will be clicked. Fine-tune it with
+   the corner/edge handles, drag it to move it, or nudge with the arrow keys
+   (Shift = 10 px).
+2. Drag the three crosshair markers onto the **color button**, its **hex
+   input** field and its **close button**.
+3. **Test** moves the mouse over the corners and the markers so you can check
+   them; **Save** (Enter) writes `config.json`. Esc cancels.
 
-![ima5ge](https://github.com/user-attachments/assets/f3ad7c57-15e9-4845-a4e0-d7ef9a74e4bc)
+Set your average Roblox FPS in Settings (Shift+F5 in Roblox shows it) — inputs
+are spaced to about 1.2 frames so the game registers every click.
 
-Enter your average Roblox FPS there and hit enter. (this is to make sure that program functions based on your pc's capabilities)
+An old `config.json` from the click-64-pixels era is migrated automatically;
+the overlay opens pre-filled so you only need to adjust.
 
-After This pops up you're ready to go
+## Development
 
-![imag11e](https://github.com/user-attachments/assets/f33ed3c7-2ec8-4fe2-bea0-935515b5fe72)
+```
+.venv\Scripts\python.exe -m pytest tests
+```
 
-Press `H` to Select Image you want to draw
-
-Press `F` to Start Drawing
-
-Press `G` to Stop Drawing.
-
-For now, whenever you go into draw mode you will always have to load a new image so please use carefully.
-
-## Enjoy!
+Design notes: [docs/ui-rework.md](docs/ui-rework.md),
+[docs/calibration-overlay.md](docs/calibration-overlay.md).
